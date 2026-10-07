@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { createGame, expireTurn, finishRound, passTurn, raiseBid, startRound } from './game.js';
+import { createGame, expireTurn, finishRound, offerLetter, passOffer, passTurn, raiseBid, startRound, surplusLetters } from './game.js';
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_PLAYERS = 8;
@@ -122,6 +122,8 @@ export class RoomManager {
     if (message.type === 'start') return this.#start(room, player, socket);
     if (message.type === 'raise') return this.#action(room, player, socket, raiseBid, message.amount);
     if (message.type === 'pass') return this.#action(room, player, socket, passTurn);
+    if (message.type === 'offer') return this.#action(room, player, socket, offerLetter, message.letter);
+    if (message.type === 'passOffer') return this.#action(room, player, socket, passOffer);
     this.#sendError(socket, 'That action is not available in the studio.');
   }
 
@@ -166,8 +168,8 @@ export class RoomManager {
   }
 
   #action(room, player, socket, transition, amount) {
-    if (!room.game || room.game.phase !== 'auction') return this.#sendError(socket, 'There is no active letter auction.');
-    const result = transition(room.game, player.id, ...(transition === raiseBid ? [amount] : []));
+    if (!room.game) return this.#sendError(socket, 'There is no active letter auction.');
+    const result = transition(room.game, player.id, ...((transition === raiseBid || transition === offerLetter) ? [amount] : []));
     if (result.error) return this.#sendError(socket, result.error);
     room.game = result.game;
     this.#afterGameChange(room);
@@ -191,20 +193,20 @@ export class RoomManager {
       }
     }
 
-    if (room.game?.phase === 'auction') this.#scheduleTurn(room);
+    if (room.game?.phase === 'auction' || room.game?.phase === 'offer') this.#scheduleTurn(room);
     this.#broadcast(room);
   }
 
   #scheduleTurn(room) {
     this.#clearTimer(room, 'turnTimer');
-    const auction = room.game?.auction;
-    if (!auction) return;
-    const auctionId = auction.id;
-    const turnId = auction.turnId;
-    const deadline = auction.deadline;
+    const turn = room.game?.auction ?? room.game?.offer;
+    if (!turn) return;
+    const auctionId = turn.id ?? turn.turnId;
+    const turnId = turn.turnId;
+    const deadline = turn.deadline;
     room.turnTimer = setTimeout(() => {
-      const current = room.game?.auction;
-      if (!current || current.id !== auctionId || current.turnId !== turnId || current.deadline !== deadline) return;
+      const current = room.game?.auction ?? room.game?.offer;
+      if (!current || (current.id ?? current.turnId) !== auctionId || current.turnId !== turnId || current.deadline !== deadline) return;
       const result = expireTurn(room.game, Date.now(), turnId);
       if (result.error) return;
       room.game = result.game;
@@ -272,7 +274,7 @@ export class RoomManager {
     if (room.phase === 'ended' && room.game?.phase !== 'complete') {
       room.phase = 'game';
       room.endedReason = null;
-      if (room.game?.phase === 'auction') this.#scheduleTurn(room);
+      if (room.game?.phase === 'auction' || room.game?.phase === 'offer') this.#scheduleTurn(room);
     }
     this.#sendRoomForSocket(socket, token);
   }
@@ -315,9 +317,11 @@ export class RoomManager {
       })),
       round: game?.round ?? 0,
       lotIndex: game?.lotIndex ?? -1,
-      totalLots: game?.lots.length ?? 0,
+      totalLots: game?.bankLotCount ?? 0,
       auction: auction ? {
         id: auction.id,
+        kind: auction.kind,
+        sellerId: auction.sellerId,
         letter: auction.letter,
         currentBid: auction.currentBid,
         highBidderId: auction.highBidderId,
@@ -326,11 +330,18 @@ export class RoomManager {
         turnId: auction.turnId,
         activePlayerIds: [...auction.activeIds],
       } : null,
+      offer: game?.offer ? {
+        sellerId: game.offer.sellerId,
+        turnPlayerId: game.offer.sellerId,
+        turnDeadline: game.offer.deadline,
+        turnId: game.offer.turnId,
+      } : null,
       history: game?.history.map((item) => ({
         round: item.round,
         letter: item.letter,
         winnerId: item.winnerId,
         winnerName: room.players.find((player) => player.id === item.winnerId)?.name ?? null,
+        sellerName: room.players.find((player) => player.id === item.sellerId)?.name ?? null,
         bid: item.bid,
       })) ?? [],
       winners: game?.winnerIds.map((id) => ({ id, name: room.players.find((player) => player.id === id)?.name ?? 'Contestant' })) ?? [],
@@ -349,6 +360,7 @@ export class RoomManager {
       self: gameViewer ? {
         target: [...gameViewer.target],
         matched: [...gameViewer.matched],
+        surplusLetters: surplusLetters(game, viewer.id),
         cash: gameViewer.cash,
         spent: gameViewer.spent,
       } : null,

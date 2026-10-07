@@ -14,7 +14,8 @@
 
 - A room supports 2–8 players.
 - Each player receives a private six-letter multiset target and $100.
-- Each round contains one letter lot per player, based on the player count at round start.
+- Each round has at most one Bank lot per player; each lot rechecks unmet target demand so the Bank stops offering a letter once every required copy is collected.
+- A Bank winner keeps every card, including surplus. One player can offer one surplus card between Bank lots each round; buyers pay the seller and receive the card.
 - The first bid is at least $5; each new bid must exceed the current bid by at least $5 and cannot exceed the bidder's balance.
 - Each turn has an 8-second timer; timeout counts as pass.
 - Every player receives income equal to $10 plus 20% of their current cash, rounded to the nearest whole dollar.
@@ -76,12 +77,13 @@
 - `passTurn(game, playerId, now)` returns `{ game, error }`; it removes the player from the current lot and advances or resolves it.
 - `expireTurn(game, now)` passes the current player only when the deadline has elapsed.
 - `finishRound(game)` checks target completion, applies the agreed tie-breakers, or adds rounded income before the next round.
+- `offerLetter` / `passOffer` run the interleaved player surplus-sale window; winning sale bids transfer the card and money to/from the seller.
 
 - [ ] **Step 1: Define the state shape.** Keep target letters and collected counts on server player records; track public bids, active bidders, turn order, lot index, round size, deadlines, cash, total spent, and completion order.
-- [ ] **Step 2: Generate targets and lots.** Create six-letter targets with possible repeats and shared letter demand. Choose lots from outstanding target slots; after a decoy award, preserve the unmet demand so the letter can return in a later round.
+- [ ] **Step 2: Generate targets and lots.** Create six-letter targets with possible repeats and shared letter demand. Draw each Bank lot only from currently unmet target slots. Keep every won card; count cards above the seller's target needs as saleable surplus.
 - [ ] **Step 3: Add bid and pass transitions.** Require the current player, a bid at least $5, at least $5 above the current bid, and no more than their current balance. Deduct the winner's bid only when the lot resolves.
-- [ ] **Step 4: Resolve lots and rounds.** Award a matching letter to one missing slot only; track the first completion sequence; compare same-round finishers by cash, then lower total spend, then completion sequence; declare a shared win if all comparisons tie.
-- [ ] **Step 5: Add income and timer transitions.** When no target is complete, add `Math.round(10 + cash * 0.2)` to each player's cash. Reject timeout events whose recorded deadline no longer matches the current turn.
+- [ ] **Step 4: Resolve lots and rounds.** Transfer Bank cards from the Bank and sale cards from seller to buyer. Match one missing target slot on acquisition; keep nonmatching cards as surplus; credit sale money to the seller; then resolve same-round winners.
+- [ ] **Step 5: Add income and timer transitions.** Interleave one rotating surplus-card offer opportunity per player between Bank lots; skip if the seller has no surplus. Apply round income when no target is complete and reject stale timeout events.
 - [ ] **Step 6: Manually walk the state transitions.** In a Node REPL or temporary local harness, create two players including a target with repeated letters, play a valid raise/pass sequence, try a below-minimum and over-balance bid, trigger a stale timeout, resolve one matching letter, confirm only one repeated slot fills, and reach a round-income transition. Remove any temporary harness before committing.
 
 ### Task 3: Add room codes and real-time multiplayer

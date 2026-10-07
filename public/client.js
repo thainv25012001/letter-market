@@ -67,6 +67,8 @@ function connect() {
       if (reconnecting) {
         sessionStorage.removeItem(resumeKey);
         reconnecting = false;
+        roomState = null;
+        showScreen(homeScreen);
       }
       showError(message.message ?? 'Something went wrong. Please try again.');
       return;
@@ -130,7 +132,7 @@ function renderRoom(room) {
   clearError();
   if (room.phase === 'lobby') {
     renderLobby(room);
-  } else if (room.phase === 'auction') {
+  } else if (room.phase === 'auction' || room.phase === 'offer') {
     renderGame(room);
   } else if (room.phase === 'intermission') {
     renderIntermission(room);
@@ -203,17 +205,62 @@ function renderTarget(self) {
   document.querySelector('#target-progress').textContent = `${matchedCount} / ${self.target.length}`;
   document.querySelector('#player-cash').textContent = formatCash(self.cash);
   document.querySelector('#player-spent').textContent = formatCash(self.spent);
+  document.querySelector('#surplus-letters').textContent = self.surplusLetters?.length ? self.surplusLetters.join(' · ') : 'NONE';
 }
 
 function renderAuction(room) {
   const auction = room.auction;
+  const offer = room.offer;
+  const offerPhase = room.phase === 'offer' && offer;
+  const isMarketSale = auction?.kind === 'player';
+  const seller = room.players.find((player) => player.id === (isMarketSale ? auction.sellerId : offer?.sellerId));
+  const kind = document.querySelector('#auction-kind');
+  const details = document.querySelector('#auction-details');
+  const offerControls = document.querySelector('#offer-controls');
+  const timer = document.querySelector('#turn-timer');
+
+  kind.textContent = offerPhase || isMarketSale ? 'SURPLUS MARKET' : 'BANK LOT';
+  document.querySelector('#lot-progress').hidden = Boolean(offerPhase || isMarketSale);
+  details.hidden = Boolean(offerPhase);
+  offerControls.hidden = !offerPhase;
+
+  if (offerPhase) {
+    const myOffer = offer.sellerId === room.viewerId;
+    document.querySelector('#auction-status').textContent = myOffer
+      ? 'Your turn — sell one surplus letter or pass.'
+      : `${seller?.name ?? 'A contestant'} is choosing a surplus letter…`;
+    document.querySelector('#auction-letter').textContent = '?';
+    document.querySelector('#current-bid').textContent = '$0';
+    document.querySelector('#high-bidder').textContent = '';
+    document.querySelector('#offer-instructions').textContent = myOffer
+      ? 'Choose one letter you do not need to put up for auction.'
+      : 'The seller is deciding which surplus letter to offer.';
+    const buttons = (myOffer ? [...new Set(room.self?.surplusLetters ?? [])] : []).map((letter) => {
+      const button = document.createElement('button');
+      button.className = 'button button-secondary';
+      button.type = 'button';
+      button.textContent = `SELL ${letter}`;
+      button.disabled = !myOffer;
+      button.addEventListener('click', () => send({ type: 'offer', letter }));
+      return button;
+    });
+    document.querySelector('#surplus-letter-buttons').replaceChildren(...buttons);
+    document.querySelector('#pass-offer').disabled = !myOffer;
+    timer.textContent = String(Math.max(0, Math.ceil((offer.turnDeadline - Date.now()) / 1000)));
+    return;
+  }
+
   if (!auction) return;
   const currentPlayer = room.players.find((player) => player.id === auction.turnPlayerId);
   const leader = room.players.find((player) => player.id === auction.highBidderId);
   const myTurn = auction.turnPlayerId === room.viewerId;
   const statusText = myTurn
-    ? (auction.currentBid === 0 ? 'Your turn — open the bidding or pass.' : 'Your turn — raise the bid or pass.')
+    ? (isMarketSale
+      ? (auction.currentBid === 0 ? 'Your turn — bid for this surplus letter or pass.' : 'Your turn — raise to buy this letter or pass.')
+      : (auction.currentBid === 0 ? 'Your turn — open the bidding or pass.' : 'Your turn — raise the bid or pass.'))
     : `${currentPlayer?.name ?? 'A contestant'} is choosing…`;
+  const sellerText = isMarketSale ? ` · ${seller?.name ?? 'CONTESTANT'}` : '';
+  kind.textContent = isMarketSale ? `SURPLUS SALE${sellerText}` : 'BANK LOT';
   document.querySelector('#auction-status').textContent = statusText;
   document.querySelector('#auction-letter').textContent = auction.letter;
   document.querySelector('#current-bid').textContent = formatCash(auction.currentBid);
@@ -228,7 +275,7 @@ function renderAuction(room) {
     button.setAttribute('aria-label', `${auction.currentBid === 0 ? 'Bid' : 'Raise by'} $${increment}${amount > cash ? ', exceeds your balance' : ''}`);
   }
   document.querySelector('#pass-bid').disabled = !myTurn;
-  document.querySelector('#turn-timer').textContent = String(Math.max(0, Math.ceil((auction.turnDeadline - Date.now()) / 1000)));
+  timer.textContent = String(Math.max(0, Math.ceil((auction.turnDeadline - Date.now()) / 1000)));
 }
 
 function renderHistory(history = []) {
@@ -249,7 +296,7 @@ function renderHistory(history = []) {
     winner.className = 'history-name';
     bid.className = 'history-bid';
     letter.textContent = item.letter;
-    winner.textContent = item.winnerName ?? 'UNSOLD';
+    winner.textContent = item.sellerName ? `${item.sellerName} → ${item.winnerName ?? 'UNSOLD'}` : (item.winnerName ?? 'UNSOLD');
     bid.textContent = item.winnerName ? formatCash(item.bid) : '—';
     row.append(letter, winner, bid);
     return row;
@@ -339,6 +386,7 @@ document.querySelector('#bid-five').addEventListener('click', () => submitBid(5)
 document.querySelector('#bid-ten').addEventListener('click', () => submitBid(10));
 document.querySelector('#bid-twenty-five').addEventListener('click', () => submitBid(25));
 document.querySelector('#pass-bid').addEventListener('click', () => send({ type: 'pass' }));
+document.querySelector('#pass-offer').addEventListener('click', () => send({ type: 'passOffer' }));
 
 function submitBid(increment) {
   const auction = roomState?.auction;
@@ -356,8 +404,9 @@ document.querySelector('#new-room').addEventListener('click', () => {
 });
 
 setInterval(() => {
-  if (roomState?.phase === 'auction' && roomState.auction && !gameScreen.hidden) {
-    document.querySelector('#turn-timer').textContent = String(Math.max(0, Math.ceil((roomState.auction.turnDeadline - Date.now()) / 1000)));
+  if (!gameScreen.hidden && (roomState?.phase === 'auction' || roomState?.phase === 'offer')) {
+    const turnDeadline = roomState.phase === 'offer' ? roomState.offer?.turnDeadline : roomState.auction?.turnDeadline;
+    if (turnDeadline) document.querySelector('#turn-timer').textContent = String(Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000)));
   }
 }, 250);
 
