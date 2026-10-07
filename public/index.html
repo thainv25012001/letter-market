@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#111323">
     <meta name="description" content="A late-night letter auction game for 2–8 players.">
-    <title>Midnight Letter Market</title>
+    <title>Letter Market</title>
     <link rel="stylesheet" href="/styles.css">
     <script type="module" src="/client.js"></script>
   </head>
@@ -13,9 +13,9 @@
     <div class="scanlines" aria-hidden="true"></div>
     <main class="app-shell">
       <header class="masthead">
-        <a class="brand" href="/" aria-label="Midnight Letter Market home">
-          <span class="brand-mark" aria-hidden="true">ML</span>
-          <span class="brand-name">MIDNIGHT<br>LETTER MARKET</span>
+        <a class="brand" href="/" aria-label="Letter Market home">
+          <span class="brand-mark" aria-hidden="true">LM</span>
+          <span class="brand-name">LETTER<br>MARKET</span>
         </a>
         <div class="broadcast-pill"><span class="live-dot"></span> LIVE FROM STUDIO 8-BIT</div>
       </header>
@@ -93,7 +93,7 @@
             <div id="auction-status" class="auction-status" role="status" aria-live="polite">Waiting for the host…</div>
             <div id="auction-details">
               <div class="letter-stage"><span id="auction-letter" class="auction-letter">?</span><span class="letter-spark spark-one" aria-hidden="true">✦</span><span class="letter-spark spark-two" aria-hidden="true">✧</span></div>
-              <div class="bid-display"><span>CURRENT BID</span><strong id="current-bid">$0</strong><small id="high-bidder"></small></div>
+              <div class="bid-display"><span id="bid-label">CURRENT BID</span><strong id="current-bid">$0</strong><small id="high-bidder"></small></div>
               <div class="bid-controls" aria-label="Auction actions">
                 <button id="bid-five" class="button button-primary bid-button" type="button">BID +$5</button>
                 <button id="bid-ten" class="button button-secondary bid-button" type="button">BID +$10</button>
@@ -105,6 +105,15 @@
             <div id="offer-controls" class="surplus-offer-controls" hidden>
               <p id="offer-instructions">Choose one letter you do not need to put up for auction.</p>
               <div id="surplus-letter-buttons" class="surplus-letter-buttons"></div>
+              <div id="starting-price-controls" class="starting-price-controls" hidden>
+                <span>STARTING PRICE</span>
+                <div class="price-stepper">
+                  <button id="price-decrease" class="button button-secondary" type="button" aria-label="Decrease starting price">−</button>
+                  <strong id="starting-price">$5</strong>
+                  <button id="price-increase" class="button button-secondary" type="button" aria-label="Increase starting price">+</button>
+                </div>
+                <button id="list-surplus-letter" class="button button-primary" type="button" disabled>LIST FOR $5</button>
+              </div>
               <button id="pass-offer" class="button button-pass" type="button">PASS ON SALE</button>
             </div>
             <p id="auction-error" class="form-error" role="alert" hidden></p>

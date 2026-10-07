@@ -1,6 +1,8 @@
 const STARTING_CASH = 100;
 const MINIMUM_RAISE = 5;
+const MAX_STARTING_PRICE = 1_000_000;
 const TURN_LENGTH_MS = 8_000;
+const SELLER_LISTING_LENGTH_MS = 20_000;
 const COMMON_LETTERS = ['E', 'A', 'R', 'I', 'O', 'T', 'N', 'S', 'L', 'C', 'U', 'D', 'G', 'P', 'M', 'H', 'B', 'Y', 'F', 'V', 'K', 'W', 'Z', 'X', 'J', 'Q'];
 
 function pickLetter(random) {
@@ -147,7 +149,7 @@ function offerAfterBankLot(game, now) {
       activeIds: [sellerId],
       turnOrder: [sellerId],
       turnIndex: 0,
-      deadline: now + TURN_LENGTH_MS,
+      deadline: now + SELLER_LISTING_LENGTH_MS,
       turnId: game.nextAuctionId++,
     };
     game.phase = 'offer';
@@ -156,10 +158,13 @@ function offerAfterBankLot(game, now) {
   openNextLot(game, now);
 }
 
-function beginMarketAuction(game, sellerId, letter, now) {
+function beginMarketAuction(game, sellerId, letter, startingPrice, now) {
   const seller = findPlayer(game, sellerId);
   const surplus = surplusLetters(game, sellerId);
   if (!seller || !surplus.includes(letter)) return { game, error: 'You can only auction a letter you have in surplus.' };
+  if (!Number.isSafeInteger(startingPrice) || startingPrice < MINIMUM_RAISE || startingPrice > MAX_STARTING_PRICE) {
+    return { game, error: `Choose a starting price from $${MINIMUM_RAISE} to $${MAX_STARTING_PRICE}.` };
+  }
   const ids = game.roundPlayerIds.filter((id) => id !== sellerId);
   const sellerIndex = game.roundPlayerIds.indexOf(sellerId);
   const order = [...game.roundPlayerIds.slice(sellerIndex + 1), ...game.roundPlayerIds.slice(0, sellerIndex)].filter((id) => id !== sellerId);
@@ -170,6 +175,7 @@ function beginMarketAuction(game, sellerId, letter, now) {
     kind: 'player',
     sellerId,
     letter,
+    startingPrice,
     currentBid: 0,
     highBidderId: null,
     activeIds: ids,
@@ -287,13 +293,13 @@ export function startRound(game, random = game.random ?? Math.random, now = Date
   return { game, error: null };
 }
 
-export function offerLetter(game, playerId, letter, now = Date.now()) {
+export function offerLetter(game, playerId, letter, startingPrice, now = Date.now()) {
   if (game.phase !== 'offer' || !game.offer) return { game, error: 'There is no surplus-letter offer turn.' };
   if (currentPlayerId(game.offer) !== playerId) return { game, error: 'It is not your turn to offer a letter.' };
   if (typeof letter !== 'string' || letter.length !== 1 || !surplusLetters(game, playerId).includes(letter)) {
     return { game, error: 'Choose one of your surplus letters.' };
   }
-  return beginMarketAuction(game, playerId, letter, now);
+  return beginMarketAuction(game, playerId, letter, startingPrice, now);
 }
 
 export function passOffer(game, playerId, now = Date.now()) {
@@ -308,8 +314,13 @@ export function raiseBid(game, playerId, amount, now = Date.now()) {
   const player = findPlayer(game, playerId);
   if (game.phase !== 'auction' || !auction) return { game, error: 'There is no active letter auction.' };
   if (!player || currentPlayerId(auction) !== playerId || !auction.activeIds.includes(playerId)) return { game, error: 'It is not your turn to bid.' };
-  if (!Number.isSafeInteger(amount) || amount < MINIMUM_RAISE || amount < auction.currentBid + MINIMUM_RAISE) {
-    return { game, error: `Raise by at least $${MINIMUM_RAISE}.` };
+  const minimumBid = auction.kind === 'player' && !auction.highBidderId
+    ? auction.startingPrice
+    : auction.currentBid + MINIMUM_RAISE;
+  if (!Number.isSafeInteger(amount) || amount < minimumBid) {
+    return { game, error: auction.kind === 'player' && !auction.highBidderId
+      ? `The opening bid must be at least $${auction.startingPrice}.`
+      : `Raise by at least $${MINIMUM_RAISE}.` };
   }
   if (amount > player.cash) return { game, error: 'That bid is higher than your balance.' };
 
@@ -365,4 +376,4 @@ export function finishRound(game) {
   return { game, error: null };
 }
 
-export const gameRules = Object.freeze({ minimumRaise: MINIMUM_RAISE, turnLengthMs: TURN_LENGTH_MS, startingCash: STARTING_CASH });
+export const gameRules = Object.freeze({ minimumRaise: MINIMUM_RAISE, turnLengthMs: TURN_LENGTH_MS, sellerListingLengthMs: SELLER_LISTING_LENGTH_MS, startingCash: STARTING_CASH });

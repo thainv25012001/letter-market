@@ -73,7 +73,7 @@ function listen(port) {
   server.listen(port, '0.0.0.0', () => {
     const address = server.address();
     const activePort = typeof address === 'object' && address ? address.port : port;
-    console.log(`Midnight Letter Market is ready at http://localhost:${activePort}`);
+    console.log(`Letter Market is ready at http://localhost:${activePort}`);
     for (const host of localAddresses()) {
       console.log(`Same-network devices can use http://${host}:${activePort}`);
     }

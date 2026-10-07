@@ -110,6 +110,13 @@ input::placeholder { color: #777f9d; }
 .surplus-offer-controls p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 13px; }
 .surplus-letter-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .surplus-letter-buttons .button { min-width: 100px; justify-content: center; }
+.surplus-letter-buttons .button[aria-pressed="true"] { color: var(--ink); background: var(--lime); }
+.starting-price-controls { display: grid; justify-items: center; gap: 8px; }
+.starting-price-controls > span { color: var(--muted); font: 800 10px "Courier New", monospace; letter-spacing: .1em; }
+.price-stepper { display: grid; grid-template-columns: 52px minmax(90px, 1fr) 52px; align-items: center; gap: 12px; width: min(100%, 260px); }
+.price-stepper .button { min-height: 48px; padding: 0; justify-content: center; font-size: 22px; }
+.price-stepper strong { color: var(--paper); text-align: center; font: 900 26px "Courier New", monospace; }
+.starting-price-controls > .button { width: 100%; }
 .surplus-offer-controls .button-pass { width: 100%; }
 .bid-button, .button-pass { width: 100%; justify-content: center; margin: 0; min-height: 48px; box-shadow: 3px 3px 0 #080a13; }
 .button-pass { color: var(--paper); background: #3b2a40; border: 2px solid #885274; font: 900 12px "Courier New", monospace; letter-spacing: .04em; }

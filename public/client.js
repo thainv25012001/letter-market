@@ -16,6 +16,9 @@ let connection;
 let reconnectTimer;
 let roomState;
 let reconnecting = false;
+let marketOfferTurnId = null;
+let selectedSurplusLetter = null;
+let selectedStartingPrice = 5;
 
 function readResume() {
   try {
@@ -226,25 +229,43 @@ function renderAuction(room) {
 
   if (offerPhase) {
     const myOffer = offer.sellerId === room.viewerId;
+    if (marketOfferTurnId !== offer.turnId) {
+      marketOfferTurnId = offer.turnId;
+      selectedSurplusLetter = null;
+      selectedStartingPrice = 5;
+    }
     document.querySelector('#auction-status').textContent = myOffer
-      ? 'Your turn — sell one surplus letter or pass.'
+      ? 'Choose a surplus letter, set its starting price, then list it for bids.'
       : `${seller?.name ?? 'A contestant'} is choosing a surplus letter…`;
     document.querySelector('#auction-letter').textContent = '?';
     document.querySelector('#current-bid').textContent = '$0';
     document.querySelector('#high-bidder').textContent = '';
     document.querySelector('#offer-instructions').textContent = myOffer
-      ? 'Choose one letter you do not need to put up for auction.'
+      ? 'Choose a letter you do not need. Raise or lower its starting price before listing.'
       : 'The seller is deciding which surplus letter to offer.';
     const buttons = (myOffer ? [...new Set(room.self?.surplusLetters ?? [])] : []).map((letter) => {
       const button = document.createElement('button');
       button.className = 'button button-secondary';
       button.type = 'button';
       button.textContent = `SELL ${letter}`;
+      button.setAttribute('aria-pressed', String(selectedSurplusLetter === letter));
       button.disabled = !myOffer;
-      button.addEventListener('click', () => send({ type: 'offer', letter }));
+      button.addEventListener('click', () => {
+        selectedSurplusLetter = letter;
+        renderAuction(room);
+      });
       return button;
     });
     document.querySelector('#surplus-letter-buttons').replaceChildren(...buttons);
+    const priceControls = document.querySelector('#starting-price-controls');
+    priceControls.hidden = !myOffer || !selectedSurplusLetter;
+    document.querySelector('#starting-price').textContent = formatCash(selectedStartingPrice);
+    document.querySelector('#price-decrease').disabled = selectedStartingPrice <= 5;
+    document.querySelector('#price-increase').disabled = selectedStartingPrice >= 1_000_000;
+    const listButton = document.querySelector('#list-surplus-letter');
+    listButton.disabled = !myOffer || !selectedSurplusLetter;
+    listButton.textContent = `LIST FOR ${formatCash(selectedStartingPrice)}`;
+    listButton.hidden = !myOffer || !selectedSurplusLetter;
     document.querySelector('#pass-offer').disabled = !myOffer;
     timer.textContent = String(Math.max(0, Math.ceil((offer.turnDeadline - Date.now()) / 1000)));
     return;
@@ -256,23 +277,30 @@ function renderAuction(room) {
   const myTurn = auction.turnPlayerId === room.viewerId;
   const statusText = myTurn
     ? (isMarketSale
-      ? (auction.currentBid === 0 ? 'Your turn — bid for this surplus letter or pass.' : 'Your turn — raise to buy this letter or pass.')
+      ? (auction.currentBid === 0 ? `Opening price ${formatCash(auction.startingPrice)} — meet it or pass.` : 'Your turn — raise to buy this letter or pass.')
       : (auction.currentBid === 0 ? 'Your turn — open the bidding or pass.' : 'Your turn — raise the bid or pass.'))
     : `${currentPlayer?.name ?? 'A contestant'} is choosing…`;
   const sellerText = isMarketSale ? ` · ${seller?.name ?? 'CONTESTANT'}` : '';
   kind.textContent = isMarketSale ? `SURPLUS SALE${sellerText}` : 'BANK LOT';
   document.querySelector('#auction-status').textContent = statusText;
   document.querySelector('#auction-letter').textContent = auction.letter;
-  document.querySelector('#current-bid').textContent = formatCash(auction.currentBid);
-  document.querySelector('#high-bidder').textContent = leader ? `LEADING: ${leader.name}` : 'NO BIDS YET';
+  const hasMarketOpeningBid = isMarketSale && auction.currentBid === 0;
+  document.querySelector('#bid-label').textContent = hasMarketOpeningBid ? 'STARTING PRICE' : 'CURRENT BID';
+  document.querySelector('#current-bid').textContent = formatCash(hasMarketOpeningBid ? auction.startingPrice : auction.currentBid);
+  document.querySelector('#high-bidder').textContent = leader ? `LEADING: ${leader.name}` : (hasMarketOpeningBid ? 'OPENING PRICE' : 'NO BIDS YET');
 
   const cash = room.self?.cash ?? 0;
-  for (const increment of [5, 10, 25]) {
+  const increments = [5, 10, 25];
+  const amounts = hasMarketOpeningBid
+    ? [auction.startingPrice, auction.startingPrice + 10, auction.startingPrice + 25]
+    : increments.map((increment) => auction.currentBid === 0 ? increment : auction.currentBid + increment);
+  for (const [index, increment] of increments.entries()) {
     const button = document.querySelector(`#bid-${increment === 25 ? 'twenty-five' : increment === 10 ? 'ten' : 'five'}`);
-    const amount = Math.max(5, auction.currentBid + increment);
-    button.textContent = auction.currentBid === 0 ? `BID $${increment}` : `RAISE +$${increment}`;
+    const amount = amounts[index];
+    button.textContent = auction.currentBid === 0 ? `BID ${formatCash(amount)}` : `RAISE +$${increment}`;
     button.disabled = !myTurn || amount > cash;
-    button.setAttribute('aria-label', `${auction.currentBid === 0 ? 'Bid' : 'Raise by'} $${increment}${amount > cash ? ', exceeds your balance' : ''}`);
+    button.setAttribute('aria-label', `${auction.currentBid === 0 ? `Bid ${formatCash(amount)}` : `Raise by $${increment}`}${amount > cash ? ', exceeds your balance' : ''}`);
+    button.onclick = () => send({ type: 'raise', amount });
   }
   document.querySelector('#pass-bid').disabled = !myTurn;
   timer.textContent = String(Math.max(0, Math.ceil((auction.turnDeadline - Date.now()) / 1000)));
@@ -382,18 +410,20 @@ document.querySelector('#copy-room-code').addEventListener('click', async () => 
 });
 
 startButton.addEventListener('click', () => send({ type: 'start' }));
-document.querySelector('#bid-five').addEventListener('click', () => submitBid(5));
-document.querySelector('#bid-ten').addEventListener('click', () => submitBid(10));
-document.querySelector('#bid-twenty-five').addEventListener('click', () => submitBid(25));
 document.querySelector('#pass-bid').addEventListener('click', () => send({ type: 'pass' }));
 document.querySelector('#pass-offer').addEventListener('click', () => send({ type: 'passOffer' }));
-
-function submitBid(increment) {
-  const auction = roomState?.auction;
-  if (!auction) return;
-  const amount = auction.currentBid === 0 ? increment : auction.currentBid + increment;
-  send({ type: 'raise', amount });
-}
+document.querySelector('#price-decrease').addEventListener('click', () => {
+  selectedStartingPrice = Math.max(5, selectedStartingPrice - 5);
+  if (roomState) renderAuction(roomState);
+});
+document.querySelector('#price-increase').addEventListener('click', () => {
+  selectedStartingPrice = Math.min(1_000_000, selectedStartingPrice + 5);
+  if (roomState) renderAuction(roomState);
+});
+document.querySelector('#list-surplus-letter').addEventListener('click', () => {
+  if (!selectedSurplusLetter) return;
+  send({ type: 'offer', letter: selectedSurplusLetter, startingPrice: selectedStartingPrice });
+});
 
 document.querySelector('#new-room').addEventListener('click', () => {
   sessionStorage.removeItem(resumeKey);

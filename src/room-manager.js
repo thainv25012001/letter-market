@@ -122,7 +122,7 @@ export class RoomManager {
     if (message.type === 'start') return this.#start(room, player, socket);
     if (message.type === 'raise') return this.#action(room, player, socket, raiseBid, message.amount);
     if (message.type === 'pass') return this.#action(room, player, socket, passTurn);
-    if (message.type === 'offer') return this.#action(room, player, socket, offerLetter, message.letter);
+    if (message.type === 'offer') return this.#action(room, player, socket, offerLetter, message.letter, message.startingPrice);
     if (message.type === 'passOffer') return this.#action(room, player, socket, passOffer);
     this.#sendError(socket, 'That action is not available in the studio.');
   }
@@ -167,9 +167,9 @@ export class RoomManager {
     this.#afterGameChange(room);
   }
 
-  #action(room, player, socket, transition, amount) {
+  #action(room, player, socket, transition, ...args) {
     if (!room.game) return this.#sendError(socket, 'There is no active letter auction.');
-    const result = transition(room.game, player.id, ...((transition === raiseBid || transition === offerLetter) ? [amount] : []));
+    const result = transition(room.game, player.id, ...args);
     if (result.error) return this.#sendError(socket, result.error);
     room.game = result.game;
     this.#afterGameChange(room);
@@ -323,6 +323,7 @@ export class RoomManager {
         kind: auction.kind,
         sellerId: auction.sellerId,
         letter: auction.letter,
+        startingPrice: auction.startingPrice ?? null,
         currentBid: auction.currentBid,
         highBidderId: auction.highBidderId,
         turnPlayerId: auction.turnOrder[auction.turnIndex] ?? null,
