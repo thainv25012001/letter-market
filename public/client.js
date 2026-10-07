@@ -27,9 +27,9 @@ let audioContext = null;
 
 function readSoundPreference() {
   try {
-    return localStorage.getItem(soundPreferenceKey) === 'true';
+    return localStorage.getItem(soundPreferenceKey) !== 'false';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -76,6 +76,18 @@ function playCue(name) {
     oscillator.start(noteStart);
     oscillator.stop(noteStart + 0.12);
   });
+}
+
+function prepareAudio() {
+  if (!soundEnabled) return;
+  const AudioContextType = window.AudioContext ?? window.webkitAudioContext;
+  if (!AudioContextType) return;
+  try {
+    audioContext ??= new AudioContextType();
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+  } catch {
+    // Audio remains available on the next supported user interaction.
+  }
 }
 
 function playRoomCues(previousRoom, nextRoom) {
@@ -471,6 +483,8 @@ soundToggle.addEventListener('click', () => {
   if (soundEnabled) playCue('toggle');
 });
 updateSoundToggle();
+document.addEventListener('pointerdown', prepareAudio, { once: true });
+document.addEventListener('keydown', prepareAudio, { once: true });
 
 function updateConnectionChip(isConnected) {
   const chip = document.querySelector('#game-connection');
