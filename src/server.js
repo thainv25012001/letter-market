@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { RoomManager } from './room-manager.js';
 
 const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 const contentTypes = new Map([
@@ -48,9 +49,8 @@ const server = http.createServer(async (request, response) => {
 });
 
 const webSocketServer = new WebSocketServer({ server, path: '/ws' });
-webSocketServer.on('connection', (socket) => {
-  socket.send(JSON.stringify({ type: 'connected' }));
-});
+const roomManager = new RoomManager();
+webSocketServer.on('connection', (socket) => roomManager.attach(socket));
 
 function localAddresses() {
   return Object.values(os.networkInterfaces())
