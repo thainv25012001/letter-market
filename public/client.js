@@ -11,7 +11,10 @@ const lobbyError = document.querySelector('#lobby-error');
 const auctionError = document.querySelector('#auction-error');
 const playerList = document.querySelector('#player-list');
 const startButton = document.querySelector('#start-game');
+const soundToggle = document.querySelector('#sound-toggle');
+const soundToggleLabel = document.querySelector('#sound-toggle-label');
 const resumeKey = 'midnight-letter-market-seat';
+const soundPreferenceKey = 'letter-market-sound-enabled';
 let connection;
 let reconnectTimer;
 let roomState;
@@ -19,6 +22,80 @@ let reconnecting = false;
 let marketOfferTurnId = null;
 let selectedSurplusLetter = null;
 let selectedStartingPrice = 5;
+let soundEnabled = readSoundPreference();
+let audioContext = null;
+
+function readSoundPreference() {
+  try {
+    return localStorage.getItem(soundPreferenceKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function updateSoundToggle() {
+  soundToggle.setAttribute('aria-pressed', String(soundEnabled));
+  soundToggle.setAttribute('aria-label', `${soundEnabled ? 'Mute' : 'Enable'} game sounds`);
+  soundToggleLabel.textContent = soundEnabled ? 'SFX ON' : 'SFX OFF';
+}
+
+function playCue(name) {
+  if (!soundEnabled) return;
+  const AudioContextType = window.AudioContext ?? window.webkitAudioContext;
+  if (!AudioContextType) return;
+
+  try {
+    audioContext ??= new AudioContextType();
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+  } catch {
+    return;
+  }
+
+  const cues = {
+    toggle: [880],
+    bid: [660, 880],
+    sale: [523, 659, 784],
+    collect: [784, 988],
+    victory: [523, 659, 784, 1047],
+  };
+  const notes = cues[name];
+  if (!notes) return;
+
+  const start = audioContext.currentTime;
+  notes.forEach((frequency, index) => {
+    const noteStart = start + index * 0.075;
+    const oscillator = audioContext.createOscillator();
+    const volume = audioContext.createGain();
+    oscillator.type = 'square';
+    oscillator.frequency.setValueAtTime(frequency, noteStart);
+    volume.gain.setValueAtTime(0.0001, noteStart);
+    volume.gain.exponentialRampToValueAtTime(0.055, noteStart + 0.012);
+    volume.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.11);
+    oscillator.connect(volume);
+    volume.connect(audioContext.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteStart + 0.12);
+  });
+}
+
+function playRoomCues(previousRoom, nextRoom) {
+  if (!previousRoom) return;
+  const previousAuction = previousRoom.auction;
+  const nextAuction = nextRoom.auction;
+  if (previousAuction?.id === nextAuction?.id && nextAuction?.currentBid > previousAuction.currentBid) {
+    playCue('bid');
+  }
+  if (nextAuction?.kind === 'player' && nextAuction.id !== previousAuction?.id) {
+    playCue('sale');
+  }
+
+  const inventoryChanged = nextRoom.players.some((player) => {
+    const previous = previousRoom.players.find((entry) => entry.id === player.id);
+    return previous && JSON.stringify(previous.letters ?? []) !== JSON.stringify(player.letters ?? []);
+  });
+  if (nextRoom.phase === 'complete' && previousRoom.phase !== 'complete') playCue('victory');
+  else if (inventoryChanged) playCue('collect');
+}
 
 function readResume() {
   try {
@@ -86,7 +163,9 @@ function connect() {
       if (message.token) {
         sessionStorage.setItem(resumeKey, JSON.stringify({ code: message.room.code, token: message.token }));
       }
+      const previousRoom = roomState;
       roomState = message.room;
+      playRoomCues(previousRoom, roomState);
       renderRoom(message.room);
     }
   });
@@ -380,6 +459,18 @@ function renderResults(room) {
 function formatCash(amount) {
   return `$${Math.round(amount ?? 0).toLocaleString('en-US')}`;
 }
+
+soundToggle.addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  try {
+    localStorage.setItem(soundPreferenceKey, String(soundEnabled));
+  } catch {
+    // Sound can still be toggled for this page session if storage is unavailable.
+  }
+  updateSoundToggle();
+  if (soundEnabled) playCue('toggle');
+});
+updateSoundToggle();
 
 function updateConnectionChip(isConnected) {
   const chip = document.querySelector('#game-connection');

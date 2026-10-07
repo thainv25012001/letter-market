@@ -32,6 +32,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
 .brand-name { font-weight: 900; font-size: 11px; line-height: 1.05; letter-spacing: .09em; }
 .broadcast-pill, .player-limit, .eyebrow, .card-kicker, .footer-note { font-family: "Courier New", monospace; font-weight: 800; letter-spacing: .08em; }
 .broadcast-pill { color: var(--muted); font-size: 10px; display: flex; gap: 8px; align-items: center; }
+.sound-toggle { min-height: 38px; padding: 0 9px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: var(--muted); background: var(--panel); border: 2px solid #646c8d; font: 900 10px "Courier New", monospace; letter-spacing: .04em; }
+.sound-toggle[aria-pressed="true"] { color: var(--lime); border-color: var(--lime); }
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pink); box-shadow: 0 0 0 4px #ff75a82b; }
 .screen { flex: 1; position: relative; z-index: 1; }
 .home-screen { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(28px, 7vw, 86px); align-items: center; padding: 42px 7% 54px; }
@@ -175,6 +177,7 @@ input::placeholder { color: #777f9d; }
 
 @media (max-width: 380px) {
   .broadcast-pill { font-size: 8px; }
+  .sound-toggle { min-height: 34px; padding: 0 6px; font-size: 9px; }
   .brand-name { font-size: 9px; }
   .pixel-card { padding: 18px; }
   .footer-note { font-size: 8px; }
