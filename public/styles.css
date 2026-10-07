@@ -184,6 +184,21 @@ input::placeholder { color: #777f9d; }
   .target-slot { font-size: 16px; }
 }
 
+@media (min-width: 761px) and (min-height: 720px) {
+  .app-shell { height: 100vh; min-height: 100svh; padding-top: 14px; padding-bottom: 10px; }
+  .game-screen { display: flex; flex-direction: column; min-height: 0; padding: 12px 0 0; }
+  .game-heading { flex: 0 0 auto; margin-bottom: 10px; }
+  .game-layout { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1.25fr) minmax(0, .75fr); gap: 10px; }
+  .auction-card { min-height: 0; padding: 13px clamp(14px, 2vw, 24px); }
+  .auction-card > .card-title-row { margin-bottom: 10px; }
+  .letter-stage { width: clamp(108px, 14vh, 156px); height: clamp(108px, 14vh, 156px); margin: 4px auto 8px; }
+  .auction-letter { font-size: clamp(68px, 10vh, 96px); }
+  .turn-clock { margin: 4px 0 7px; }
+  .private-card, .roster-card, .history-card { padding: 12px; }
+  .compact-list .contestant-row { padding: 6px 0; gap: 3px 7px; }
+  .privacy-note { margin-top: 9px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
