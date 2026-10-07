@@ -43,7 +43,7 @@ Opponent cash totals are not shown in the interface. Since bids and the income r
 - The server validates capacity, room state, player identity, bids, turn ownership, and timers. It generates targets and resolves auctions; clients never decide outcomes.
 - Public room snapshots include room phase, player names/connectivity, current round and lot, current bid, active bidders, turn owner, deadline, and public auction history. Player-specific snapshots add only that player's target, matched letters, and cash.
 - Client actions include create/join, ready/start, raise, pass, and reconnect/resume using a per-room player token held in that browser.
-- Disconnects mark a player offline and allow a short reconnect window. A disconnected player's active turn times out as a pass. If the room creator disconnects before starting, the next connected player becomes creator. An active match ends cleanly if fewer than two players remain connected; the room can be recreated rather than persisting match state.
+- Disconnects mark a player offline and allow 30 seconds to reconnect. A disconnected player's active turn times out as a pass. If the room creator disconnects before starting, the next connected player becomes creator. An active match ends cleanly if fewer than two players remain connected; the room can be recreated rather than persisting match state.
 
 ## Design constraints and defaults
 
