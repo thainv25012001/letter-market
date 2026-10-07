@@ -334,6 +334,18 @@ export class RoomManager {
         bid: item.bid,
       })) ?? [],
       winners: game?.winnerIds.map((id) => ({ id, name: room.players.find((player) => player.id === id)?.name ?? 'Contestant' })) ?? [],
+      results: game?.phase === 'complete' ? game.players
+        .map((player) => ({
+          id: player.id,
+          name: player.name,
+          target: [...player.target],
+          matched: [...player.matched],
+          cash: player.cash,
+          spent: player.spent,
+          winner: game.winnerIds.includes(player.id),
+          completionOrder: player.completionOrder,
+        }))
+        .sort((left, right) => Number(right.winner) - Number(left.winner) || right.cash - left.cash || left.spent - right.spent) : null,
       self: gameViewer ? {
         target: [...gameViewer.target],
         matched: [...gameViewer.matched],

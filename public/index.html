@@ -70,6 +70,72 @@
         <p id="lobby-error" class="form-error" role="alert" hidden></p>
       </section>
 
+      <section id="game-screen" class="screen game-screen" aria-labelledby="game-title" hidden>
+        <div class="game-heading">
+          <div>
+            <p class="eyebrow">ROOM <span id="game-room-code">------</span> <span class="limit-divider">·</span> ROUND <span id="game-round">01</span></p>
+            <h1 id="game-title" class="sr-only">Letter auction</h1>
+          </div>
+          <span id="game-connection" class="connection-chip"><span class="live-dot"></span> CONNECTED</span>
+        </div>
+        <div class="game-layout">
+          <aside class="private-card pixel-card" aria-label="Your private collection">
+            <div class="card-title-row"><span class="card-kicker">YOUR TARGET</span><span id="target-progress" class="progress-count">0 / 6</span></div>
+            <div id="target-letters" class="target-letters"></div>
+            <div class="cash-row"><span>YOUR CASH</span><strong id="player-cash">$100</strong></div>
+            <div class="cash-subrow"><span>SPENT</span><span id="player-spent">$0</span></div>
+            <p class="privacy-note">Your target stays private until the show ends.</p>
+          </aside>
+
+          <main class="auction-card pixel-card">
+            <div class="card-title-row"><span class="card-kicker">BANK LOT <span id="lot-number">1</span></span><span class="lot-total">OF <span id="lot-total">2</span></span></div>
+            <div id="auction-status" class="auction-status" role="status" aria-live="polite">Waiting for the host…</div>
+            <div class="letter-stage"><span id="auction-letter" class="auction-letter">?</span><span class="letter-spark spark-one" aria-hidden="true">✦</span><span class="letter-spark spark-two" aria-hidden="true">✧</span></div>
+            <div class="bid-display"><span>CURRENT BID</span><strong id="current-bid">$0</strong><small id="high-bidder"></small></div>
+            <div class="turn-clock"><span id="turn-timer" class="timer-number">8</span><span>SECONDS TO ACT</span></div>
+            <div class="bid-controls" aria-label="Auction actions">
+              <button id="bid-five" class="button button-primary bid-button" type="button">BID +$5</button>
+              <button id="bid-ten" class="button button-secondary bid-button" type="button">BID +$10</button>
+              <button id="bid-twenty-five" class="button button-secondary bid-button" type="button">BID +$25</button>
+              <button id="pass-bid" class="button button-pass" type="button">PASS</button>
+            </div>
+            <p id="auction-error" class="form-error" role="alert" hidden></p>
+          </main>
+
+          <aside class="roster-card pixel-card" aria-label="Contestants">
+            <div class="card-title-row"><span class="card-kicker">CONTESTANTS</span><span id="contestant-count" class="player-count">0 / 8</span></div>
+            <ul id="contestant-list" class="player-list compact-list"></ul>
+            <p class="privacy-note">Watch the bids for clues.</p>
+          </aside>
+
+          <aside class="history-card pixel-card" aria-label="Recent auction results">
+            <div class="card-title-row"><span class="card-kicker">RECENT LOTS</span></div>
+            <ul id="auction-history" class="history-list"></ul>
+          </aside>
+        </div>
+      </section>
+
+      <section id="intermission-screen" class="screen intermission-screen" aria-labelledby="intermission-title" hidden>
+        <div class="pixel-card intermission-card">
+          <p class="eyebrow">THE BANK HAS SPOKEN</p>
+          <h1 id="intermission-title">Income received!</h1>
+          <p id="income-message" class="hero-description">Your cash is growing. Get ready for the next auction.</p>
+          <div class="income-cash"><span>YOUR BALANCE</span><strong id="income-cash">$100</strong></div>
+          <p class="status-line">Next round starting soon…</p>
+        </div>
+      </section>
+
+      <section id="result-screen" class="screen result-screen" aria-labelledby="result-title" hidden>
+        <div class="pixel-card result-card">
+          <p class="eyebrow">THE FINAL BELL</p>
+          <h1 id="result-title">Show complete</h1>
+          <p id="result-message" class="hero-description"></p>
+          <div class="card-title-row"><span class="card-kicker">FINAL SCOREBOARD</span></div>
+          <ol id="final-results" class="final-results"></ol>
+          <button id="new-room" class="button button-primary" type="button">BACK TO ROOM DESK</button>
+        </div>
+      </section>
+
       <footer class="footer-note"><span>© STUDIO 8-BIT</span><span>MAKE YOUR LETTERS COUNT</span></footer>
     </main>
   </body>
