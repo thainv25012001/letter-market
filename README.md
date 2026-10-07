@@ -25,4 +25,4 @@ To play on a second device on the same Wi-Fi network, open the LAN URL printed b
 6. After the Bank lots and any player sales, anyone still collecting gets income of $10 plus 20% of current cash (rounded to the nearest dollar).
 7. Keep playing until someone fills all six target slots. If players finish in the same round, the winner is decided by remaining cash, then lower total spend.
 
-Targets and exact cash stay private during the show. The results screen reveals them after the match.
+Targets and exact cash stay private during the show, while everyone can see each player's collected letters. The results screen reveals the targets and final balances after the match.

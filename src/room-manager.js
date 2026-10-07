@@ -314,6 +314,7 @@ export class RoomManager {
         name: player.name,
         connected: player.connected,
         host: player.id === room.hostId,
+        letters: [...(game?.players.find((entry) => entry.id === player.id)?.inventory ?? [])],
       })),
       round: game?.round ?? 0,
       lotIndex: game?.lotIndex ?? -1,

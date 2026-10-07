@@ -123,6 +123,8 @@ input::placeholder { color: #777f9d; }
 .roster-card { grid-area: roster; padding: 17px 14px; }
 .compact-list li { padding: 10px 0; font-size: 12px; }
 .compact-list .player-badge { text-align: right; font-size: 8px; }
+.compact-list .contestant-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; }
+.contestant-inventory { grid-column: 1 / -1; color: var(--cyan); font: 800 10px "Courier New", monospace; letter-spacing: .03em; line-height: 1.45; overflow-wrap: anywhere; }
 .privacy-note { color: #a3aac4; font-size: 11px; line-height: 1.45; margin: 16px 0 0; }
 .history-card { grid-area: history; padding: 17px 14px; align-self: start; }
 .history-list { list-style: none; margin: 0; padding: 0; }

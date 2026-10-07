@@ -184,12 +184,24 @@ function renderContestants(room) {
   const list = document.querySelector('#contestant-list');
   list.replaceChildren(...room.players.map((player) => {
     const item = document.createElement('li');
+    item.className = 'contestant-row';
     const name = document.createElement('span');
     const badge = document.createElement('span');
     name.textContent = player.id === room.viewerId ? `YOU · ${player.name}` : player.name;
     badge.className = 'player-badge';
     badge.textContent = !player.connected ? 'OFFLINE' : (player.host ? 'HOST' : 'IN');
-    item.append(name, badge);
+    const inventory = Array.isArray(player.letters) ? player.letters : [];
+    const counts = new Map();
+    for (const letter of inventory) counts.set(letter, (counts.get(letter) ?? 0) + 1);
+    const hand = document.createElement('span');
+    hand.className = 'contestant-inventory';
+    hand.textContent = inventory.length
+      ? `${inventory.length} ${inventory.length === 1 ? 'LETTER' : 'LETTERS'} · ${[...counts].sort(([left], [right]) => left.localeCompare(right)).map(([letter, count]) => count > 1 ? `${letter} ×${count}` : letter).join('  ')}`
+      : '0 LETTERS';
+    hand.setAttribute('aria-label', inventory.length
+      ? `${inventory.length} letters owned: ${[...counts].map(([letter, count]) => count > 1 ? `${letter}, ${count} copies` : letter).join(', ')}`
+      : '0 letters owned');
+    item.append(name, badge, hand);
     return item;
   }));
 }
