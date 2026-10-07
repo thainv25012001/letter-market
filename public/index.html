@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111323">
+    <meta name="description" content="A late-night letter auction game for 2–8 players.">
+    <title>Midnight Letter Market</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/client.js"></script>
+  </head>
+  <body>
+    <div class="scanlines" aria-hidden="true"></div>
+    <main class="app-shell">
+      <header class="masthead">
+        <a class="brand" href="/" aria-label="Midnight Letter Market home">
+          <span class="brand-mark" aria-hidden="true">ML</span>
+          <span class="brand-name">MIDNIGHT<br>LETTER MARKET</span>
+        </a>
+        <div class="broadcast-pill"><span class="live-dot"></span> LIVE FROM STUDIO 8-BIT</div>
+      </header>
+
+      <section id="home-screen" class="screen home-screen" aria-labelledby="home-title">
+        <div class="hero-copy">
+          <p class="eyebrow">TONIGHT'S FEATURED GAME</p>
+          <h1 id="home-title">Buy the letters.<br><span>Beat the clock.</span></h1>
+          <p class="hero-description">Read the room, raise the stakes, and finish your secret collection before the other contestants.</p>
+          <div class="player-limit"><span class="pixel-star" aria-hidden="true">✦</span> 2–8 PLAYERS <span class="limit-divider">·</span> ONE SCREEN EACH</div>
+        </div>
+
+        <div class="entry-card pixel-card">
+          <div class="card-title-row">
+            <span class="card-kicker">CONTESTANT DESK</span>
+            <span class="card-number" aria-hidden="true">01</span>
+          </div>
+          <label for="display-name">YOUR ON-AIR NAME</label>
+          <input id="display-name" name="display-name" maxlength="18" autocomplete="nickname" placeholder="Type a name" required>
+          <button id="create-room" class="button button-primary" type="button"><span>CREATE A ROOM</span><span aria-hidden="true">↗</span></button>
+          <div class="divider"><span>OR JOIN THE SHOW</span></div>
+          <label for="room-code">ROOM CODE</label>
+          <div class="join-row">
+            <input id="room-code" name="room-code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC123" aria-label="Six-character room code">
+            <button id="join-room" class="button button-secondary" type="button">JOIN</button>
+          </div>
+          <p id="connection-status" class="status-line" role="status" aria-live="polite">Connecting to the studio…</p>
+          <p id="form-error" class="form-error" role="alert" hidden></p>
+        </div>
+
+        <div class="stage-decor stage-left" aria-hidden="true"><span>✦</span><span>✧</span><span>✦</span></div>
+        <div class="stage-decor stage-right" aria-hidden="true"><span>✧</span><span>✦</span><span>✧</span></div>
+      </section>
+
+      <section id="lobby-screen" class="screen lobby-screen" aria-labelledby="lobby-title" hidden>
+        <div class="lobby-heading">
+          <p class="eyebrow">CONTESTANT LOUNGE</p>
+          <h1 id="lobby-title">You're on the list.</h1>
+          <p>Share your room code and bring your rivals into the studio.</p>
+        </div>
+        <div class="room-code-card pixel-card">
+          <span class="card-kicker">YOUR ROOM CODE</span>
+          <strong id="lobby-room-code" class="room-code">------</strong>
+          <button id="copy-room-code" class="button button-secondary" type="button">COPY CODE</button>
+        </div>
+        <div class="lobby-roster pixel-card">
+          <div class="card-title-row"><span class="card-kicker">PLAYERS</span><span id="player-count" class="player-count">0 / 8</span></div>
+          <ul id="player-list" class="player-list" aria-live="polite"></ul>
+          <p id="lobby-message" class="status-line">Waiting for contestants…</p>
+          <button id="start-game" class="button button-primary" type="button" disabled>START THE SHOW</button>
+        </div>
+        <p id="lobby-error" class="form-error" role="alert" hidden></p>
+      </section>
+
+      <footer class="footer-note"><span>© STUDIO 8-BIT</span><span>MAKE YOUR LETTERS COUNT</span></footer>
+    </main>
+  </body>
+</html>
