@@ -24,6 +24,7 @@ let reconnecting = false;
 let roomDirectory = [];
 let directoryReceived = false;
 let spectating = false;
+let leavingRoom = false;
 let marketOfferTurnId = null;
 let selectedSurplusLetter = null;
 let selectedStartingPrice = 5;
@@ -182,11 +183,12 @@ function connect() {
       renderDirectory();
     }
     if (message.type === 'roomDirectory') {
-      const wasSpectating = spectating;
+      const shouldReturnToRooms = spectating || leavingRoom;
       roomDirectory = Array.isArray(message.rooms) ? message.rooms : [];
       directoryReceived = true;
-      if (wasSpectating) {
+      if (shouldReturnToRooms) {
         spectating = false;
+        leavingRoom = false;
         roomState = null;
         showScreen(homeScreen);
       }
@@ -365,7 +367,7 @@ function renderGame(room) {
   showScreen(gameScreen);
   document.querySelector('#private-card').hidden = spectating;
   document.querySelector('#spectator-card').hidden = !spectating;
-  document.querySelector('#spectator-home-game').hidden = !spectating;
+  document.querySelector('#spectator-home-game').hidden = false;
   document.querySelector('#game-room-code').textContent = room.code;
   document.querySelector('#game-round').textContent = String(room.round).padStart(2, '0');
   document.querySelector('#lot-number').textContent = String(Math.max(1, room.lotIndex + 1));
@@ -548,7 +550,7 @@ function renderIntermission(room) {
   showScreen(intermissionScreen);
   const balance = document.querySelector('#income-balance');
   balance.hidden = spectating;
-  document.querySelector('#spectator-home-intermission').hidden = !spectating;
+  document.querySelector('#spectator-home-intermission').hidden = false;
   document.querySelector('#income-cash').textContent = formatCash(room.self?.cash ?? 0);
   document.querySelector('#income-message').textContent = spectating
     ? 'The contestants are between rounds. The next auction will begin shortly.'
@@ -665,9 +667,16 @@ document.querySelector('#copy-room-code').addEventListener('click', async () => 
 });
 
 startButton.addEventListener('click', () => send({ type: 'start' }));
-for (const button of document.querySelectorAll('.spectator-home')) {
+for (const button of document.querySelectorAll('.room-exit')) {
   button.addEventListener('click', () => {
-    if (spectating) send({ type: 'unwatch' });
+    if (spectating) {
+      send({ type: 'unwatch' });
+      return;
+    }
+
+    sessionStorage.removeItem(resumeKey);
+    leavingRoom = true;
+    if (!send({ type: 'leave' })) leavingRoom = false;
   });
 }
 document.querySelector('#pass-bid').addEventListener('click', () => send({ type: 'pass' }));
@@ -683,14 +692,6 @@ document.querySelector('#price-increase').addEventListener('click', () => {
 document.querySelector('#list-surplus-letter').addEventListener('click', () => {
   if (!selectedSurplusLetter) return;
   send({ type: 'offer', letter: selectedSurplusLetter, startingPrice: selectedStartingPrice });
-});
-
-document.querySelector('#new-room').addEventListener('click', () => {
-  sessionStorage.removeItem(resumeKey);
-  roomState = null;
-  showScreen(homeScreen);
-  if (connection?.readyState === WebSocket.OPEN) connection.close();
-  status.textContent = 'Returning to the studio desk…';
 });
 
 setInterval(() => {

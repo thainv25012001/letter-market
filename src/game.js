@@ -309,6 +309,54 @@ export function passOffer(game, playerId, now = Date.now()) {
   return { game, error: null };
 }
 
+export function removePlayer(game, playerId, now = Date.now()) {
+  if (!findPlayer(game, playerId) || game.phase === 'complete') return game;
+
+  const auction = game.auction;
+  const currentAuctionPlayerId = auction ? currentPlayerId(auction) : null;
+  const isOfferSeller = game.offer?.sellerId === playerId;
+  const isAuctionSeller = auction?.kind === 'player' && auction.sellerId === playerId;
+  game.players = game.players.filter((player) => player.id !== playerId);
+  game.roundPlayerIds = game.roundPlayerIds.filter((id) => id !== playerId);
+  game.marketOfferedIds = game.marketOfferedIds.filter((id) => id !== playerId);
+  game.winnerIds = game.winnerIds.filter((id) => id !== playerId);
+
+  const oldMarketCursor = game.marketCursor;
+  const removedMarketIndex = game.marketOrder.indexOf(playerId);
+  game.marketOrder = game.marketOrder.filter((id) => id !== playerId);
+  if (game.marketOrder.length === 0) game.marketCursor = 0;
+  else {
+    const cursor = oldMarketCursor - Number(removedMarketIndex >= 0 && removedMarketIndex < oldMarketCursor);
+    game.marketCursor = ((cursor % game.marketOrder.length) + game.marketOrder.length) % game.marketOrder.length;
+  }
+  if (game.round > 0) game.bankLotCount = game.roundPlayerIds.length;
+  if (game.roundPlayerIds.length > 0) game.nextOpeningIndex %= game.roundPlayerIds.length;
+  else game.nextOpeningIndex = 0;
+
+  if (isOfferSeller) {
+    game.offer = null;
+    openNextLot(game, now);
+  } else if (isAuctionSeller) {
+    game.history.unshift({ round: game.round, letter: auction.letter, winnerId: null, sellerId: playerId, kind: 'player', bid: 0, advanced: false });
+    game.history = game.history.slice(0, 12);
+    openNextLot(game, now);
+  } else if (auction && game.auction === auction) {
+    if (currentAuctionPlayerId === playerId && auction.activeIds.includes(playerId)) {
+      passTurn(game, playerId, now);
+    }
+
+    if (game.auction === auction) {
+      const nextPlayerId = currentPlayerId(auction);
+      auction.activeIds = auction.activeIds.filter((id) => id !== playerId);
+      auction.turnOrder = auction.turnOrder.filter((id) => id !== playerId);
+      auction.turnIndex = Math.max(0, auction.turnOrder.indexOf(nextPlayerId));
+      finishAuctionIfResolved(game, now);
+    }
+  }
+
+  return game;
+}
+
 export function raiseBid(game, playerId, amount, now = Date.now()) {
   const auction = game.auction;
   const player = findPlayer(game, playerId);

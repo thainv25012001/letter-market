@@ -13,7 +13,7 @@ npm start
 
 Open the local URL printed by the server, usually [http://localhost:3000](http://localhost:3000). The Open Rooms list shows rooms on this server; rooms live in memory and the list resets when the server stops.
 
-To play on a second device on the same Wi-Fi network, open the LAN URL printed by the server on that device. Devices using the same server see the same Open Rooms list. Join a waiting room directly from the list, or enter its six-character code. A started room can be watched in read-only mode; watching does not use a contestant seat, and private targets and balances remain hidden during the show. Network firewalls may need to allow connections to Node.js.
+To play on a second device on the same Wi-Fi network, open the LAN URL printed by the server on that device. Devices using the same server see the same Open Rooms list. Join a waiting room directly from the list, or enter its six-character code. A started room can be watched in read-only mode; watching does not use a contestant seat, and private targets and balances remain hidden during the show. Players can return to the room list with Back to Rooms; losing the connection immediately frees their seat. Network firewalls may need to allow connections to Node.js.
 
 ## Quick play-through
 

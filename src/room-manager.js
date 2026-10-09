@@ -1,10 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { createGame, expireTurn, finishRound, offerLetter, passOffer, passTurn, raiseBid, startRound, surplusLetters } from './game.js';
+import { createGame, expireTurn, finishRound, offerLetter, passOffer, passTurn, raiseBid, removePlayer, startRound, surplusLetters } from './game.js';
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_PLAYERS = 8;
 const MIN_PLAYERS = 2;
-const RECONNECT_WINDOW_MS = 30_000;
 const ROUND_PAUSE_MS = 2_200;
 const MAX_MESSAGE_LENGTH = 4_096;
 
@@ -64,7 +63,7 @@ export class RoomManager {
         watchedRoom.spectators.delete(socket);
         this.#spectatorRooms.delete(socket);
       }
-      this.#disconnect(socket);
+      this.#removeSeat(socket, false);
     });
   }
 
@@ -84,7 +83,6 @@ export class RoomManager {
       game: null,
       turnTimer: null,
       roundTimer: null,
-      reconnectTimers: new Map(),
       history: [],
       endedReason: null,
     };
@@ -129,6 +127,7 @@ export class RoomManager {
 
     if (message.type === 'watch') return this.#watch(message, socket);
     if (message.type === 'unwatch') return this.#unwatch(socket);
+    if (message.type === 'leave') return this.#leave(socket);
     if (this.#spectatorRooms.has(socket)) return this.#sendError(socket, 'Leave the watched show before taking another seat.');
 
     if (message.type === 'create') {
@@ -141,7 +140,7 @@ export class RoomManager {
       if (joined.error) return this.#sendError(socket, joined.error);
       return this.#sendRoomForSocket(socket, joined.token);
     }
-    if (message.type === 'reconnect') return this.#reconnect(message, socket);
+    if (message.type === 'reconnect') return this.#sendError(socket, 'That seat has left the room. Join again from the room list.');
 
     const seat = this.#socketSeats.get(socket);
     if (!seat) return this.#sendError(socket, 'Create or join a room first.');
@@ -165,7 +164,6 @@ export class RoomManager {
       name,
       connected: true,
       socket,
-      reconnectUntil: null,
     };
   }
 
@@ -183,11 +181,6 @@ export class RoomManager {
     const connectedPlayers = room.players.filter((entry) => entry.connected);
     if (connectedPlayers.length < MIN_PLAYERS || connectedPlayers.length > MAX_PLAYERS) return this.#sendError(socket, 'The show needs 2–8 connected contestants.');
 
-    for (const player of room.players.filter((entry) => !entry.connected)) {
-      const timer = room.reconnectTimers.get(player.id);
-      if (timer) clearTimeout(timer);
-      room.reconnectTimers.delete(player.id);
-    }
     room.players = connectedPlayers;
 
     room.game = createGame(connectedPlayers.map(({ id, name }) => ({ id, name })));
@@ -245,69 +238,45 @@ export class RoomManager {
     }, Math.max(0, deadline - Date.now()));
   }
 
-  #disconnect(socket) {
+  #leave(socket) {
+    if (this.#spectatorRooms.has(socket)) return this.#unwatch(socket);
+    this.#removeSeat(socket, true);
+  }
+
+  #removeSeat(socket, returnToDirectory) {
     const seat = this.#socketSeats.get(socket);
-    if (!seat) return;
+    if (!seat) {
+      if (returnToDirectory) this.#sendDirectory(socket);
+      return;
+    }
     const { room, player } = seat;
     if (player.socket !== socket) return;
+    this.#socketSeats.delete(socket);
     player.connected = false;
     player.socket = null;
-    player.reconnectUntil = Date.now() + RECONNECT_WINDOW_MS;
-    if (room.game) {
-      const gamePlayer = room.game.players.find((entry) => entry.id === player.id);
-      if (gamePlayer) gamePlayer.connected = false;
-    }
+    room.players = room.players.filter((entry) => entry.id !== player.id);
 
-    if (room.phase === 'lobby' && room.hostId === player.id) {
+    if (room.hostId === player.id) {
       room.hostId = room.players.find((entry) => entry.connected)?.id ?? null;
     }
 
-    const reconnectTimer = setTimeout(() => this.#expireReconnect(room, player), RECONNECT_WINDOW_MS);
-    room.reconnectTimers.set(player.id, reconnectTimer);
-    this.#broadcast(room);
-  }
+    if (room.phase === 'lobby' && room.players.length === 0) this.#rooms.delete(room.code);
 
-  #expireReconnect(room, player) {
-    room.reconnectTimers.delete(player.id);
-    if (player.connected) return;
-    if (room.phase === 'lobby') {
-      room.players = room.players.filter((entry) => entry.id !== player.id);
-      if (room.hostId === player.id) room.hostId = room.players.find((entry) => entry.connected)?.id ?? null;
-      if (room.players.length === 0) this.#rooms.delete(room.code);
-    } else if (room.game && room.game.phase !== 'complete') {
-      room.players = room.players.filter((entry) => entry.id !== player.id);
-      room.game.players = room.game.players.filter((entry) => entry.id !== player.id);
-      if (room.players.filter((entry) => entry.connected).length < MIN_PLAYERS) {
+    if (room.game && room.game.phase !== 'complete') {
+      room.game = removePlayer(room.game, player.id);
+      if (room.phase !== 'lobby' && room.phase !== 'ended' && room.players.length < MIN_PLAYERS) {
         room.phase = 'ended';
-        room.endedReason = 'The show ended because fewer than two contestants remained connected.';
+        room.endedReason = 'The show ended because fewer than two contestants remained.';
         this.#clearTimer(room, 'turnTimer');
         this.#clearTimer(room, 'roundTimer');
+      } else if (room.phase !== 'lobby' && room.phase !== 'ended') {
+        this.#afterGameChange(room);
+        return;
       }
     }
-    this.#broadcast(room);
-  }
 
-  #reconnect(message, socket) {
-    const code = cleanCode(message.code);
-    const token = typeof message.token === 'string' ? message.token : '';
-    const room = this.#rooms.get(code);
-    const player = room?.players.find((entry) => entry.token === token);
-    if (!room || !player || player.connected || player.reconnectUntil < Date.now()) {
-      return this.#sendError(socket, 'That seat cannot reconnect. Create or join a room again.');
-    }
-    const timer = room.reconnectTimers.get(player.id);
-    if (timer) clearTimeout(timer);
-    room.reconnectTimers.delete(player.id);
-    player.connected = true;
-    player.reconnectUntil = null;
-    player.socket = socket;
-    this.#bindSeat(socket, room, player);
-    if (room.phase === 'ended' && room.game?.phase !== 'complete') {
-      room.phase = 'game';
-      room.endedReason = null;
-      if (room.game?.phase === 'auction' || room.game?.phase === 'offer') this.#scheduleTurn(room);
-    }
-    this.#sendRoomForSocket(socket, token);
+    this.#broadcast(room);
+    if (returnToDirectory) this.#sendDirectory(socket);
   }
 
   #sendRoomForSocket(socket, token = null) {

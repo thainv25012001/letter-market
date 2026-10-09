@@ -73,6 +73,7 @@
           <span class="card-kicker">YOUR ROOM CODE</span>
           <strong id="lobby-room-code" class="room-code">------</strong>
           <button id="copy-room-code" class="button button-secondary" type="button">COPY CODE</button>
+          <button id="leave-room-lobby" class="button button-secondary room-exit" type="button">BACK TO ROOMS</button>
         </div>
         <div class="lobby-roster pixel-card">
           <div class="card-title-row"><span class="card-kicker">PLAYERS</span><span id="player-count" class="player-count">0 / 8</span></div>
@@ -90,7 +91,7 @@
             <h1 id="game-title" class="sr-only">Letter auction</h1>
           </div>
           <span id="game-connection" class="connection-chip"><span class="live-dot"></span> CONNECTED</span>
-          <button id="spectator-home-game" class="button button-secondary spectator-home" type="button" hidden>BACK TO ROOMS</button>
+          <button id="spectator-home-game" class="button button-secondary spectator-home room-exit" type="button">BACK TO ROOMS</button>
         </div>
         <div class="game-layout">
           <aside id="private-card" class="private-card pixel-card" aria-label="Your private collection">
@@ -158,7 +159,7 @@
           <p id="income-message" class="hero-description">Your cash is growing. Get ready for the next auction.</p>
           <div id="income-balance" class="income-cash"><span>YOUR BALANCE</span><strong id="income-cash">$100</strong></div>
           <p id="intermission-status" class="status-line">Next round starting soon…</p>
-          <button id="spectator-home-intermission" class="button button-secondary spectator-home" type="button" hidden>BACK TO ROOMS</button>
+          <button id="spectator-home-intermission" class="button button-secondary spectator-home room-exit" type="button">BACK TO ROOMS</button>
         </div>
       </section>
 
@@ -169,8 +170,8 @@
           <p id="result-message" class="hero-description"></p>
           <div class="card-title-row"><span class="card-kicker">FINAL SCOREBOARD</span></div>
           <ol id="final-results" class="final-results"></ol>
-          <button id="spectator-home-results" class="button button-secondary spectator-home" type="button" hidden>BACK TO ROOMS</button>
-          <button id="new-room" class="button button-primary" type="button">BACK TO ROOM DESK</button>
+          <button id="spectator-home-results" class="button button-secondary spectator-home room-exit" type="button" hidden>BACK TO ROOMS</button>
+          <button id="new-room" class="button button-primary room-exit" type="button">BACK TO ROOMS</button>
         </div>
       </section>
 
