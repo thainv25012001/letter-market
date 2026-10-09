@@ -14,6 +14,19 @@ function cleanName(value) {
     : '';
 }
 
+function uniquePlayerName(name, players) {
+  const normalized = (value) => value.normalize('NFC').toLowerCase();
+  const isTaken = (candidate) => players.some((player) => normalized(player.name) === normalized(candidate));
+  if (!isTaken(name)) return name;
+
+  for (let suffix = 2; ; suffix += 1) {
+    const suffixText = ` ${suffix}`;
+    const base = name.slice(0, 18 - suffixText.length).trimEnd();
+    const candidate = `${base}${suffixText}`;
+    if (!isTaken(candidate)) return candidate;
+  }
+}
+
 function cleanCode(value) {
   return typeof value === 'string' ? value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) : '';
 }
@@ -89,7 +102,7 @@ export class RoomManager {
     if (room.phase !== 'lobby') return { error: 'That show has already started.' };
     if (room.players.length >= MAX_PLAYERS) return { error: 'This room already has eight contestants.' };
 
-    const player = this.#newPlayer(safeName, socket);
+    const player = this.#newPlayer(uniquePlayerName(safeName, room.players), socket);
     room.players.push(player);
     if (!room.hostId) room.hostId = player.id;
     this.#bindSeat(socket, room, player);

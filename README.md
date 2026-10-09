@@ -18,7 +18,7 @@ To play on a second device on the same Wi-Fi network, open the LAN URL printed b
 ## Quick play-through
 
 1. Enter a name and create a room.
-2. On another device or browser tab, enter a name and select the waiting room from Open Rooms, or enter its code. Rooms support 2–8 players.
+2. On another device or browser tab, enter a name and select the waiting room from Open Rooms, or enter its code. Rooms support 2–8 players. Duplicate names in a room receive a numbered name automatically.
 3. The host starts once at least two contestants are connected.
 4. Bid at least $5, raise the current bid by at least $5, or pass before the 8-second timer ends. Bank lots only show letters that someone still needs; once all required copies are collected, the Bank stops offering that letter.
 5. Every auction winner keeps the letter. Letters beyond their own target needs become surplus. Between Bank lots, one player gets a chance to sell a surplus letter; they set its starting price with the − / + controls before listing it. Other players bid at or above that price, and the winner pays the seller and receives the card. Each player gets at most one sale offer per round.
