@@ -34,12 +34,25 @@ function publicPhase(room) {
 
 export class RoomManager {
   #rooms = new Map();
+  #clients = new Set();
   #socketSeats = new WeakMap();
+  #spectatorRooms = new WeakMap();
+  #lastDirectoryPayload = null;
 
   attach(socket) {
+    this.#clients.add(socket);
     socket.send(JSON.stringify({ type: 'connected' }));
+    this.#sendDirectory(socket);
     socket.on('message', (raw) => this.handleMessage(socket, raw));
-    socket.on('close', () => this.#disconnect(socket));
+    socket.on('close', () => {
+      this.#clients.delete(socket);
+      const watchedRoom = this.#spectatorRooms.get(socket);
+      if (watchedRoom) {
+        watchedRoom.spectators.delete(socket);
+        this.#spectatorRooms.delete(socket);
+      }
+      this.#disconnect(socket);
+    });
   }
 
   createRoom(name, socket) {
@@ -53,6 +66,7 @@ export class RoomManager {
       code,
       hostId: player.id,
       players: [player],
+      spectators: new Set(),
       phase: 'lobby',
       game: null,
       turnTimer: null,
@@ -99,6 +113,10 @@ export class RoomManager {
       this.#sendError(socket, 'The studio could not read that action.');
       return;
     }
+
+    if (message.type === 'watch') return this.#watch(message, socket);
+    if (message.type === 'unwatch') return this.#unwatch(socket);
+    if (this.#spectatorRooms.has(socket)) return this.#sendError(socket, 'Leave the watched show before taking another seat.');
 
     if (message.type === 'create') {
       const created = this.createRoom(message.name, socket);
@@ -296,19 +314,24 @@ export class RoomManager {
       if (!socket || socket === skipSocket || socket.readyState !== 1) continue;
       this.#send(socket, { type: 'room', room: this.#snapshot(room, player) });
     }
+    for (const socket of room.spectators) {
+      if (socket.readyState !== 1) continue;
+      this.#send(socket, { type: 'room', spectator: true, room: this.#snapshot(room, null) });
+    }
+    this.#broadcastDirectory();
   }
 
   #snapshot(room, viewer) {
     const game = room.game;
-    const gameViewer = game?.players.find((entry) => entry.id === viewer.id);
+    const gameViewer = viewer ? game?.players.find((entry) => entry.id === viewer.id) : null;
     const auction = game?.auction;
     return {
       code: room.code,
       phase: room.phase === 'ended' ? 'ended' : publicPhase(room),
       statusMessage: room.endedReason,
       hostId: room.hostId,
-      viewerId: viewer.id,
-      canStart: room.phase === 'lobby' && room.hostId === viewer.id && room.players.filter((player) => player.connected).length >= MIN_PLAYERS,
+      ...(viewer ? { viewerId: viewer.id } : {}),
+      canStart: Boolean(viewer) && room.phase === 'lobby' && room.hostId === viewer.id && room.players.filter((player) => player.connected).length >= MIN_PLAYERS,
       players: room.players.map((player) => ({
         id: player.id,
         name: player.name,
@@ -359,18 +382,70 @@ export class RoomManager {
           completionOrder: player.completionOrder,
         }))
         .sort((left, right) => Number(right.winner) - Number(left.winner) || right.cash - left.cash || left.spent - right.spent) : null,
-      self: gameViewer ? {
-        target: [...gameViewer.target],
-        matched: [...gameViewer.matched],
-        surplusLetters: surplusLetters(game, viewer.id),
-        cash: gameViewer.cash,
-        spent: gameViewer.spent,
-      } : null,
+      ...(viewer ? {
+        self: gameViewer ? {
+          target: [...gameViewer.target],
+          matched: [...gameViewer.matched],
+          surplusLetters: surplusLetters(game, viewer.id),
+          cash: gameViewer.cash,
+          spent: gameViewer.spent,
+        } : null,
+      } : {}),
     };
+  }
+
+  #directorySnapshot() {
+    return [...this.#rooms.values()].map((room) => ({
+      code: room.code,
+      hostName: room.players.find((player) => player.id === room.hostId)?.name ?? 'Contestant',
+      playerCount: room.players.length,
+      maxPlayers: MAX_PLAYERS,
+      phase: room.phase === 'lobby' ? 'lobby' : publicPhase(room),
+    }));
+  }
+
+  #sendDirectory(socket) {
+    const rooms = this.#directorySnapshot();
+    this.#lastDirectoryPayload = JSON.stringify(rooms);
+    this.#send(socket, { type: 'roomDirectory', rooms });
+  }
+
+  #broadcastDirectory() {
+    const rooms = this.#directorySnapshot();
+    const payload = JSON.stringify(rooms);
+    if (payload === this.#lastDirectoryPayload) return;
+    this.#lastDirectoryPayload = payload;
+
+    for (const socket of this.#clients) {
+      if (this.#socketSeats.has(socket) || this.#spectatorRooms.has(socket)) continue;
+      this.#send(socket, { type: 'roomDirectory', rooms });
+    }
+  }
+
+  #watch(message, socket) {
+    if (this.#socketSeats.has(socket)) return this.#sendError(socket, 'Contestants cannot switch to spectator mode during a show.');
+    const code = cleanCode(message.code);
+    const room = this.#rooms.get(code);
+    if (!room) return this.#sendError(socket, 'That room was not found.');
+    if (room.phase === 'lobby') return this.#sendError(socket, 'That show is still waiting for contestants. Join it to play.');
+
+    const previousRoom = this.#spectatorRooms.get(socket);
+    if (previousRoom) previousRoom.spectators.delete(socket);
+    room.spectators.add(socket);
+    this.#spectatorRooms.set(socket, room);
+    this.#send(socket, { type: 'room', spectator: true, room: this.#snapshot(room, null) });
+  }
+
+  #unwatch(socket) {
+    const room = this.#spectatorRooms.get(socket);
+    if (room) room.spectators.delete(socket);
+    this.#spectatorRooms.delete(socket);
+    this.#sendDirectory(socket);
   }
 
   #sendError(socket, message) {
     this.#send(socket, { type: 'error', message });
+    if (!this.#socketSeats.has(socket) && !this.#spectatorRooms.has(socket)) this.#sendDirectory(socket);
   }
 
   #send(socket, message) {

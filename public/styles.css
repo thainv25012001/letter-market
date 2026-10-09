@@ -36,7 +36,7 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
 .sound-toggle[aria-pressed="true"] { color: var(--lime); border-color: var(--lime); }
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pink); box-shadow: 0 0 0 4px #ff75a82b; }
 .screen { flex: 1; position: relative; z-index: 1; }
-.home-screen { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(28px, 7vw, 86px); align-items: center; padding: 42px 7% 54px; }
+.home-screen { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(28px, 7vw, 86px); align-items: center; padding: 42px 7% 54px; min-height: 0; overflow-y: auto; }
 .hero-copy { max-width: 500px; position: relative; z-index: 1; }
 .eyebrow { color: var(--cyan); font-size: 11px; margin: 0 0 17px; }
 h1 { font-size: clamp(37px, 5.5vw, 66px); line-height: .99; letter-spacing: -.045em; margin: 0; color: var(--paper); }
@@ -47,6 +47,17 @@ h1 { font-size: clamp(37px, 5.5vw, 66px); line-height: .99; letter-spacing: -.04
 .limit-divider { color: #727996; }
 .pixel-card { background: var(--panel); border: 3px solid var(--paper); box-shadow: 7px 7px 0 #080a13, inset 0 0 0 2px #ffffff13; padding: 23px; position: relative; }
 .entry-card { width: min(100%, 365px); justify-self: end; }
+.open-rooms { grid-column: 1 / -1; width: min(100%, 880px); justify-self: center; align-self: start; padding: 20px; }
+.open-rooms .card-title-row { margin-bottom: 8px; }
+.room-directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; max-height: min(38vh, 360px); overflow-y: auto; list-style: none; margin: 12px 0 0; padding: 0; }
+.room-directory-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 13px; background: #101426; border: 1px solid #4c5574; }
+.room-directory-summary { display: grid; gap: 4px; min-width: 0; }
+.room-directory-code { color: var(--gold); font: 900 17px "Courier New", monospace; letter-spacing: .1em; }
+.room-directory-host, .room-directory-seats, .room-directory-phase, .room-directory-full { color: var(--muted); font: 800 9px "Courier New", monospace; letter-spacing: .05em; overflow-wrap: anywhere; }
+.room-directory-phase { color: var(--cyan); }
+.room-directory-full { color: var(--gold); flex: 0 0 auto; }
+.room-directory-action { min-height: 42px; padding: 0 11px; justify-content: center; flex: 0 0 auto; font-size: 10px; }
+.open-rooms .status-line { margin-top: 8px; }
 .card-title-row { margin-bottom: 20px; }
 .card-kicker { color: var(--cyan); font-size: 10px; }
 .card-number { color: #777f9d; font: 700 11px "Courier New", monospace; }
@@ -93,6 +104,12 @@ input::placeholder { color: #777f9d; }
 .connection-chip.offline .live-dot { background: var(--gold); }
 .game-layout { display: grid; grid-template-columns: minmax(180px, .78fr) minmax(300px, 1.45fr) minmax(180px, .8fr); grid-template-areas: "private auction roster" "private auction history"; gap: 14px; align-items: stretch; }
 .private-card { grid-area: private; padding: 18px 15px; }
+.spectator-card { grid-area: private; min-height: 240px; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 20px; text-align: center; border-style: dashed; }
+.spectator-card strong { color: var(--gold); font: 900 18px "Courier New", monospace; }
+.spectator-card p { max-width: 190px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.spectator-home { margin-top: 10px; justify-content: center; }
+.game-heading .spectator-home { margin: 0; min-height: 38px; padding: 0 10px; font-size: 9px; }
+.intermission-card .spectator-home, .result-card .spectator-home { width: 100%; }
 .auction-card { grid-area: auction; padding: 19px clamp(16px, 3vw, 30px); text-align: center; min-height: 500px; display: flex; flex-direction: column; align-items: center; }
 .auction-card > .card-title-row { width: 100%; }
 .lot-total { color: var(--muted); font: 800 10px "Courier New", monospace; }
@@ -160,6 +177,8 @@ input::placeholder { color: #777f9d; }
 @media (max-width: 760px) {
   .app-shell { padding: 18px 18px 14px; }
   .home-screen { grid-template-columns: 1fr; gap: 24px; align-content: center; padding: 30px 5% 36px; }
+  .open-rooms { grid-column: 1; width: 100%; padding: 17px; }
+  .room-directory { max-height: 42vh; grid-template-columns: 1fr; }
   .hero-copy { max-width: 500px; }
   h1 { font-size: clamp(40px, 10vw, 58px); }
   .hero-description { margin: 15px 0; }
@@ -180,6 +199,8 @@ input::placeholder { color: #777f9d; }
   .sound-toggle { min-height: 34px; padding: 0 6px; font-size: 9px; }
   .brand-name { font-size: 9px; }
   .pixel-card { padding: 18px; }
+  .room-directory-item { padding: 11px 9px; gap: 8px; }
+  .room-directory-action { padding: 0 8px; font-size: 9px; }
   .footer-note { font-size: 8px; }
   .game-layout { grid-template-columns: 1fr; grid-template-areas: "auction" "private" "roster" "history"; }
   .auction-card { padding: 17px 15px; }
