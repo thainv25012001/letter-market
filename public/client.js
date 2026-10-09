@@ -100,7 +100,7 @@ function playRoomCues(previousRoom, nextRoom) {
   if (!previousRoom) return;
   const previousAuction = previousRoom.auction;
   const nextAuction = nextRoom.auction;
-  if (previousAuction?.id === nextAuction?.id && nextAuction?.currentBid > previousAuction.currentBid) {
+  if (previousAuction && nextAuction && previousAuction.id === nextAuction.id && nextAuction.currentBid > previousAuction.currentBid) {
     playCue('bid');
   }
   if (nextAuction?.kind === 'player' && nextAuction.id !== previousAuction?.id) {
