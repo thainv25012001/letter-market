@@ -68,6 +68,7 @@ export class RoomManager {
   }
 
   createRoom(name, socket) {
+    if (this.#socketSeats.has(socket)) return { error: 'Leave your current room before creating another.' };
     const safeName = cleanName(name);
     if (!safeName) return { error: 'Add an on-air name to create a room.' };
 
@@ -92,6 +93,7 @@ export class RoomManager {
   }
 
   joinRoom(code, name, socket) {
+    if (this.#socketSeats.has(socket)) return { error: 'Leave your current room before joining another.' };
     const safeName = cleanName(name);
     if (!safeName) return { error: 'Add an on-air name before joining.' };
     const roomCode = cleanCode(code);
