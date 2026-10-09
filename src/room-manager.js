@@ -1,10 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { createGame, expireTurn, finishRound, offerLetter, passOffer, passTurn, raiseBid, startRound, surplusLetters } from './game.js';
+import { createGame, expireTurn, finishRound, offerLetter, passOffer, passTurn, raiseBid, removePlayer, startRound, surplusLetters } from './game.js';
 
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_PLAYERS = 8;
 const MIN_PLAYERS = 2;
-const RECONNECT_WINDOW_MS = 30_000;
 const ROUND_PAUSE_MS = 2_200;
 const MAX_MESSAGE_LENGTH = 4_096;
 
@@ -12,6 +11,19 @@ function cleanName(value) {
   return typeof value === 'string'
     ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 18)
     : '';
+}
+
+function uniquePlayerName(name, players) {
+  const normalized = (value) => value.normalize('NFC').toLowerCase();
+  const isTaken = (candidate) => players.some((player) => normalized(player.name) === normalized(candidate));
+  if (!isTaken(name)) return name;
+
+  for (let suffix = 2; ; suffix += 1) {
+    const suffixText = ` ${suffix}`;
+    const base = name.slice(0, 18 - suffixText.length).trimEnd();
+    const candidate = `${base}${suffixText}`;
+    if (!isTaken(candidate)) return candidate;
+  }
 }
 
 function cleanCode(value) {
@@ -34,15 +46,29 @@ function publicPhase(room) {
 
 export class RoomManager {
   #rooms = new Map();
+  #clients = new Set();
   #socketSeats = new WeakMap();
+  #spectatorRooms = new WeakMap();
+  #lastDirectoryPayload = null;
 
   attach(socket) {
+    this.#clients.add(socket);
     socket.send(JSON.stringify({ type: 'connected' }));
+    this.#sendDirectory(socket);
     socket.on('message', (raw) => this.handleMessage(socket, raw));
-    socket.on('close', () => this.#disconnect(socket));
+    socket.on('close', () => {
+      this.#clients.delete(socket);
+      const watchedRoom = this.#spectatorRooms.get(socket);
+      if (watchedRoom) {
+        watchedRoom.spectators.delete(socket);
+        this.#spectatorRooms.delete(socket);
+      }
+      this.#removeSeat(socket, false);
+    });
   }
 
   createRoom(name, socket) {
+    if (this.#socketSeats.has(socket)) return { error: 'Leave your current room before creating another.' };
     const safeName = cleanName(name);
     if (!safeName) return { error: 'Add an on-air name to create a room.' };
 
@@ -53,11 +79,11 @@ export class RoomManager {
       code,
       hostId: player.id,
       players: [player],
+      spectators: new Set(),
       phase: 'lobby',
       game: null,
       turnTimer: null,
       roundTimer: null,
-      reconnectTimers: new Map(),
       history: [],
       endedReason: null,
     };
@@ -67,6 +93,7 @@ export class RoomManager {
   }
 
   joinRoom(code, name, socket) {
+    if (this.#socketSeats.has(socket)) return { error: 'Leave your current room before joining another.' };
     const safeName = cleanName(name);
     if (!safeName) return { error: 'Add an on-air name before joining.' };
     const roomCode = cleanCode(code);
@@ -75,7 +102,7 @@ export class RoomManager {
     if (room.phase !== 'lobby') return { error: 'That show has already started.' };
     if (room.players.length >= MAX_PLAYERS) return { error: 'This room already has eight contestants.' };
 
-    const player = this.#newPlayer(safeName, socket);
+    const player = this.#newPlayer(uniquePlayerName(safeName, room.players), socket);
     room.players.push(player);
     if (!room.hostId) room.hostId = player.id;
     this.#bindSeat(socket, room, player);
@@ -100,6 +127,11 @@ export class RoomManager {
       return;
     }
 
+    if (message.type === 'watch') return this.#watch(message, socket);
+    if (message.type === 'unwatch') return this.#unwatch(socket);
+    if (message.type === 'leave') return this.#leave(socket);
+    if (this.#spectatorRooms.has(socket)) return this.#sendError(socket, 'Leave the watched show before taking another seat.');
+
     if (message.type === 'create') {
       const created = this.createRoom(message.name, socket);
       if (created.error) return this.#sendError(socket, created.error);
@@ -110,7 +142,7 @@ export class RoomManager {
       if (joined.error) return this.#sendError(socket, joined.error);
       return this.#sendRoomForSocket(socket, joined.token);
     }
-    if (message.type === 'reconnect') return this.#reconnect(message, socket);
+    if (message.type === 'reconnect') return this.#sendError(socket, 'That seat has left the room. Join again from the room list.');
 
     const seat = this.#socketSeats.get(socket);
     if (!seat) return this.#sendError(socket, 'Create or join a room first.');
@@ -134,7 +166,6 @@ export class RoomManager {
       name,
       connected: true,
       socket,
-      reconnectUntil: null,
     };
   }
 
@@ -152,11 +183,6 @@ export class RoomManager {
     const connectedPlayers = room.players.filter((entry) => entry.connected);
     if (connectedPlayers.length < MIN_PLAYERS || connectedPlayers.length > MAX_PLAYERS) return this.#sendError(socket, 'The show needs 2–8 connected contestants.');
 
-    for (const player of room.players.filter((entry) => !entry.connected)) {
-      const timer = room.reconnectTimers.get(player.id);
-      if (timer) clearTimeout(timer);
-      room.reconnectTimers.delete(player.id);
-    }
     room.players = connectedPlayers;
 
     room.game = createGame(connectedPlayers.map(({ id, name }) => ({ id, name })));
@@ -214,69 +240,45 @@ export class RoomManager {
     }, Math.max(0, deadline - Date.now()));
   }
 
-  #disconnect(socket) {
+  #leave(socket) {
+    if (this.#spectatorRooms.has(socket)) return this.#unwatch(socket);
+    this.#removeSeat(socket, true);
+  }
+
+  #removeSeat(socket, returnToDirectory) {
     const seat = this.#socketSeats.get(socket);
-    if (!seat) return;
+    if (!seat) {
+      if (returnToDirectory) this.#sendDirectory(socket);
+      return;
+    }
     const { room, player } = seat;
     if (player.socket !== socket) return;
+    this.#socketSeats.delete(socket);
     player.connected = false;
     player.socket = null;
-    player.reconnectUntil = Date.now() + RECONNECT_WINDOW_MS;
-    if (room.game) {
-      const gamePlayer = room.game.players.find((entry) => entry.id === player.id);
-      if (gamePlayer) gamePlayer.connected = false;
-    }
+    room.players = room.players.filter((entry) => entry.id !== player.id);
 
-    if (room.phase === 'lobby' && room.hostId === player.id) {
+    if (room.hostId === player.id) {
       room.hostId = room.players.find((entry) => entry.connected)?.id ?? null;
     }
 
-    const reconnectTimer = setTimeout(() => this.#expireReconnect(room, player), RECONNECT_WINDOW_MS);
-    room.reconnectTimers.set(player.id, reconnectTimer);
-    this.#broadcast(room);
-  }
+    if (room.phase === 'lobby' && room.players.length === 0) this.#rooms.delete(room.code);
 
-  #expireReconnect(room, player) {
-    room.reconnectTimers.delete(player.id);
-    if (player.connected) return;
-    if (room.phase === 'lobby') {
-      room.players = room.players.filter((entry) => entry.id !== player.id);
-      if (room.hostId === player.id) room.hostId = room.players.find((entry) => entry.connected)?.id ?? null;
-      if (room.players.length === 0) this.#rooms.delete(room.code);
-    } else if (room.game && room.game.phase !== 'complete') {
-      room.players = room.players.filter((entry) => entry.id !== player.id);
-      room.game.players = room.game.players.filter((entry) => entry.id !== player.id);
-      if (room.players.filter((entry) => entry.connected).length < MIN_PLAYERS) {
+    if (room.game && room.game.phase !== 'complete') {
+      room.game = removePlayer(room.game, player.id);
+      if (room.phase !== 'lobby' && room.phase !== 'ended' && room.players.length < MIN_PLAYERS) {
         room.phase = 'ended';
-        room.endedReason = 'The show ended because fewer than two contestants remained connected.';
+        room.endedReason = 'The show ended because fewer than two contestants remained.';
         this.#clearTimer(room, 'turnTimer');
         this.#clearTimer(room, 'roundTimer');
+      } else if (room.phase !== 'lobby' && room.phase !== 'ended') {
+        this.#afterGameChange(room);
+        return;
       }
     }
-    this.#broadcast(room);
-  }
 
-  #reconnect(message, socket) {
-    const code = cleanCode(message.code);
-    const token = typeof message.token === 'string' ? message.token : '';
-    const room = this.#rooms.get(code);
-    const player = room?.players.find((entry) => entry.token === token);
-    if (!room || !player || player.connected || player.reconnectUntil < Date.now()) {
-      return this.#sendError(socket, 'That seat cannot reconnect. Create or join a room again.');
-    }
-    const timer = room.reconnectTimers.get(player.id);
-    if (timer) clearTimeout(timer);
-    room.reconnectTimers.delete(player.id);
-    player.connected = true;
-    player.reconnectUntil = null;
-    player.socket = socket;
-    this.#bindSeat(socket, room, player);
-    if (room.phase === 'ended' && room.game?.phase !== 'complete') {
-      room.phase = 'game';
-      room.endedReason = null;
-      if (room.game?.phase === 'auction' || room.game?.phase === 'offer') this.#scheduleTurn(room);
-    }
-    this.#sendRoomForSocket(socket, token);
+    this.#broadcast(room);
+    if (returnToDirectory) this.#sendDirectory(socket);
   }
 
   #sendRoomForSocket(socket, token = null) {
@@ -296,19 +298,24 @@ export class RoomManager {
       if (!socket || socket === skipSocket || socket.readyState !== 1) continue;
       this.#send(socket, { type: 'room', room: this.#snapshot(room, player) });
     }
+    for (const socket of room.spectators) {
+      if (socket.readyState !== 1) continue;
+      this.#send(socket, { type: 'room', spectator: true, room: this.#snapshot(room, null) });
+    }
+    this.#broadcastDirectory();
   }
 
   #snapshot(room, viewer) {
     const game = room.game;
-    const gameViewer = game?.players.find((entry) => entry.id === viewer.id);
+    const gameViewer = viewer ? game?.players.find((entry) => entry.id === viewer.id) : null;
     const auction = game?.auction;
     return {
       code: room.code,
       phase: room.phase === 'ended' ? 'ended' : publicPhase(room),
       statusMessage: room.endedReason,
       hostId: room.hostId,
-      viewerId: viewer.id,
-      canStart: room.phase === 'lobby' && room.hostId === viewer.id && room.players.filter((player) => player.connected).length >= MIN_PLAYERS,
+      ...(viewer ? { viewerId: viewer.id } : {}),
+      canStart: Boolean(viewer) && room.phase === 'lobby' && room.hostId === viewer.id && room.players.filter((player) => player.connected).length >= MIN_PLAYERS,
       players: room.players.map((player) => ({
         id: player.id,
         name: player.name,
@@ -359,18 +366,70 @@ export class RoomManager {
           completionOrder: player.completionOrder,
         }))
         .sort((left, right) => Number(right.winner) - Number(left.winner) || right.cash - left.cash || left.spent - right.spent) : null,
-      self: gameViewer ? {
-        target: [...gameViewer.target],
-        matched: [...gameViewer.matched],
-        surplusLetters: surplusLetters(game, viewer.id),
-        cash: gameViewer.cash,
-        spent: gameViewer.spent,
-      } : null,
+      ...(viewer ? {
+        self: gameViewer ? {
+          target: [...gameViewer.target],
+          matched: [...gameViewer.matched],
+          surplusLetters: surplusLetters(game, viewer.id),
+          cash: gameViewer.cash,
+          spent: gameViewer.spent,
+        } : null,
+      } : {}),
     };
+  }
+
+  #directorySnapshot() {
+    return [...this.#rooms.values()].map((room) => ({
+      code: room.code,
+      hostName: room.players.find((player) => player.id === room.hostId)?.name ?? 'Contestant',
+      playerCount: room.players.length,
+      maxPlayers: MAX_PLAYERS,
+      phase: room.phase === 'lobby' ? 'lobby' : publicPhase(room),
+    }));
+  }
+
+  #sendDirectory(socket) {
+    const rooms = this.#directorySnapshot();
+    this.#lastDirectoryPayload = JSON.stringify(rooms);
+    this.#send(socket, { type: 'roomDirectory', rooms });
+  }
+
+  #broadcastDirectory() {
+    const rooms = this.#directorySnapshot();
+    const payload = JSON.stringify(rooms);
+    if (payload === this.#lastDirectoryPayload) return;
+    this.#lastDirectoryPayload = payload;
+
+    for (const socket of this.#clients) {
+      if (this.#socketSeats.has(socket) || this.#spectatorRooms.has(socket)) continue;
+      this.#send(socket, { type: 'roomDirectory', rooms });
+    }
+  }
+
+  #watch(message, socket) {
+    if (this.#socketSeats.has(socket)) return this.#sendError(socket, 'Contestants cannot switch to spectator mode during a show.');
+    const code = cleanCode(message.code);
+    const room = this.#rooms.get(code);
+    if (!room) return this.#sendError(socket, 'That room was not found.');
+    if (room.phase === 'lobby') return this.#sendError(socket, 'That show is still waiting for contestants. Join it to play.');
+
+    const previousRoom = this.#spectatorRooms.get(socket);
+    if (previousRoom) previousRoom.spectators.delete(socket);
+    room.spectators.add(socket);
+    this.#spectatorRooms.set(socket, room);
+    this.#send(socket, { type: 'room', spectator: true, room: this.#snapshot(room, null) });
+  }
+
+  #unwatch(socket) {
+    const room = this.#spectatorRooms.get(socket);
+    if (room) room.spectators.delete(socket);
+    this.#spectatorRooms.delete(socket);
+    this.#sendDirectory(socket);
   }
 
   #sendError(socket, message) {
     this.#send(socket, { type: 'error', message });
+    if (!this.#socketSeats.has(socket) && !this.#spectatorRooms.has(socket)) this.#sendDirectory(socket);
   }
 
   #send(socket, message) {

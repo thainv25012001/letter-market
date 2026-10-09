@@ -2,6 +2,8 @@ const status = document.querySelector('#connection-status');
 const error = document.querySelector('#form-error');
 const nameInput = document.querySelector('#display-name');
 const codeInput = document.querySelector('#room-code');
+const roomDirectoryList = document.querySelector('#room-directory');
+const roomDirectoryStatus = document.querySelector('#room-directory-status');
 const homeScreen = document.querySelector('#home-screen');
 const lobbyScreen = document.querySelector('#lobby-screen');
 const gameScreen = document.querySelector('#game-screen');
@@ -19,6 +21,10 @@ let connection;
 let reconnectTimer;
 let roomState;
 let reconnecting = false;
+let roomDirectory = [];
+let directoryReceived = false;
+let spectating = false;
+let leavingRoom = false;
 let marketOfferTurnId = null;
 let selectedSurplusLetter = null;
 let selectedStartingPrice = 5;
@@ -94,7 +100,7 @@ function playRoomCues(previousRoom, nextRoom) {
   if (!previousRoom) return;
   const previousAuction = previousRoom.auction;
   const nextAuction = nextRoom.auction;
-  if (previousAuction?.id === nextAuction?.id && nextAuction?.currentBid > previousAuction.currentBid) {
+  if (previousAuction && nextAuction && previousAuction.id === nextAuction.id && nextAuction.currentBid > previousAuction.currentBid) {
     playCue('bid');
   }
   if (nextAuction?.kind === 'player' && nextAuction.id !== previousAuction?.id) {
@@ -127,6 +133,9 @@ function connect() {
     if (connection !== socket) return;
     status.textContent = 'Connected to the studio.';
     status.dataset.state = 'connected';
+    roomDirectory = [];
+    directoryReceived = false;
+    renderDirectory();
     const resume = readResume();
     if (resume?.code && resume?.token) {
       reconnecting = true;
@@ -138,6 +147,7 @@ function connect() {
     status.textContent = 'Connection lost. Reconnecting…';
     status.dataset.state = 'disconnected';
     updateConnectionChip(false);
+    renderDirectory();
     window.clearTimeout(reconnectTimer);
     reconnectTimer = window.setTimeout(connect, 1200);
   });
@@ -145,6 +155,7 @@ function connect() {
     status.textContent = 'Unable to reach the studio. Retrying…';
     status.dataset.state = 'disconnected';
     updateConnectionChip(false);
+    renderDirectory();
   });
   socket.addEventListener('message', (event) => {
     let message;
@@ -169,9 +180,23 @@ function connect() {
       status.textContent = 'Connected to the studio.';
       status.dataset.state = 'connected';
       updateConnectionChip(true);
+      renderDirectory();
+    }
+    if (message.type === 'roomDirectory') {
+      const shouldReturnToRooms = spectating || leavingRoom;
+      roomDirectory = Array.isArray(message.rooms) ? message.rooms : [];
+      directoryReceived = true;
+      if (shouldReturnToRooms) {
+        spectating = false;
+        leavingRoom = false;
+        roomState = null;
+        showScreen(homeScreen);
+      }
+      renderDirectory();
     }
     if (message.type === 'room') {
       reconnecting = false;
+      spectating = message.spectator === true;
       if (message.token) {
         sessionStorage.setItem(resumeKey, JSON.stringify({ code: message.room.code, token: message.token }));
       }
@@ -222,6 +247,88 @@ function showScreen(active) {
   }
 }
 
+function renderDirectory() {
+  if (!roomDirectoryList || !roomDirectoryStatus) return;
+  roomDirectoryList.replaceChildren();
+
+  if (connection?.readyState !== WebSocket.OPEN) {
+    roomDirectoryStatus.textContent = connection?.readyState === WebSocket.CONNECTING
+      ? 'Connecting to the studio…'
+      : 'Connection lost. Reconnecting…';
+    roomDirectoryStatus.dataset.state = 'disconnected';
+    return;
+  }
+
+  roomDirectoryStatus.dataset.state = 'connected';
+  if (!directoryReceived) {
+    roomDirectoryStatus.textContent = 'Loading rooms…';
+    return;
+  }
+  if (roomDirectory.length === 0) {
+    roomDirectoryStatus.textContent = 'No rooms to join or watch yet. Create one or check back soon.';
+    return;
+  }
+
+  roomDirectoryStatus.textContent = `${roomDirectory.length} ${roomDirectory.length === 1 ? 'room' : 'rooms'} to join or watch.`;
+  for (const room of roomDirectory) {
+    const item = document.createElement('li');
+    item.className = 'room-directory-item';
+
+    const summary = document.createElement('div');
+    summary.className = 'room-directory-summary';
+    const code = document.createElement('strong');
+    code.className = 'room-directory-code';
+    code.textContent = room.code;
+    const host = document.createElement('span');
+    host.className = 'room-directory-host';
+    host.textContent = `HOST · ${room.hostName}`;
+    const seats = document.createElement('span');
+    seats.className = 'room-directory-seats';
+    seats.textContent = `${room.playerCount} / ${room.maxPlayers} PLAYERS`;
+    const phase = document.createElement('span');
+    phase.className = 'room-directory-phase';
+    phase.textContent = room.phase === 'lobby' ? 'WAITING FOR PLAYERS'
+      : room.phase === 'complete' ? 'SHOW COMPLETE'
+        : room.phase === 'ended' ? 'SHOW ENDED'
+          : room.phase === 'intermission' ? 'BETWEEN ROUNDS' : 'LIVE SHOW';
+    summary.append(code, host, seats, phase);
+    item.append(summary);
+
+    let action = null;
+    let label = '';
+    if (room.phase === 'lobby' && room.playerCount < room.maxPlayers) {
+      action = 'join';
+      label = 'JOIN';
+    } else if (['auction', 'offer', 'intermission'].includes(room.phase)) {
+      action = 'watch';
+      label = 'WATCH';
+    } else if (room.phase === 'complete') {
+      action = 'watch';
+      label = 'VIEW RESULTS';
+    } else if (room.phase === 'ended') {
+      action = 'watch';
+      label = 'VIEW STATUS';
+    }
+
+    if (action) {
+      const button = document.createElement('button');
+      button.className = 'button button-secondary room-directory-action';
+      button.type = 'button';
+      button.dataset.roomAction = action;
+      button.dataset.roomCode = room.code;
+      button.disabled = connection.readyState !== WebSocket.OPEN;
+      button.textContent = label;
+      item.append(button);
+    } else if (room.phase === 'lobby') {
+      const full = document.createElement('span');
+      full.className = 'room-directory-full';
+      full.textContent = 'FULL';
+      item.append(full);
+    }
+    roomDirectoryList.append(item);
+  }
+}
+
 function renderRoom(room) {
   clearError();
   if (room.phase === 'lobby') {
@@ -258,6 +365,9 @@ function renderLobby(room) {
 
 function renderGame(room) {
   showScreen(gameScreen);
+  document.querySelector('#private-card').hidden = spectating;
+  document.querySelector('#spectator-card').hidden = !spectating;
+  document.querySelector('#spectator-home-game').hidden = false;
   document.querySelector('#game-room-code').textContent = room.code;
   document.querySelector('#game-round').textContent = String(room.round).padStart(2, '0');
   document.querySelector('#lot-number').textContent = String(Math.max(1, room.lotIndex + 1));
@@ -267,7 +377,7 @@ function renderGame(room) {
   updateConnectionChip(online);
   renderContestants(room);
   renderTarget(room.self);
-  renderAuction(room);
+  renderAuction(room, spectating);
   renderHistory(room.history);
 }
 
@@ -314,7 +424,7 @@ function renderTarget(self) {
   document.querySelector('#surplus-letters').textContent = self.surplusLetters?.length ? self.surplusLetters.join(' · ') : 'NONE';
 }
 
-function renderAuction(room) {
+function renderAuction(room, readOnly = spectating) {
   const auction = room.auction;
   const offer = room.offer;
   const offerPhase = room.phase === 'offer' && offer;
@@ -323,12 +433,14 @@ function renderAuction(room) {
   const kind = document.querySelector('#auction-kind');
   const details = document.querySelector('#auction-details');
   const offerControls = document.querySelector('#offer-controls');
+  const bidControls = document.querySelector('.bid-controls');
   const timer = document.querySelector('#turn-timer');
 
   kind.textContent = offerPhase || isMarketSale ? 'SURPLUS MARKET' : 'BANK LOT';
   document.querySelector('#lot-progress').hidden = Boolean(offerPhase || isMarketSale);
   details.hidden = Boolean(offerPhase);
-  offerControls.hidden = !offerPhase;
+  offerControls.hidden = readOnly || !offerPhase;
+  bidControls.hidden = readOnly;
 
   if (offerPhase) {
     const myOffer = offer.sellerId === room.viewerId;
@@ -436,12 +548,22 @@ function renderHistory(history = []) {
 
 function renderIntermission(room) {
   showScreen(intermissionScreen);
+  const balance = document.querySelector('#income-balance');
+  balance.hidden = spectating;
+  document.querySelector('#spectator-home-intermission').hidden = false;
   document.querySelector('#income-cash').textContent = formatCash(room.self?.cash ?? 0);
-  document.querySelector('#income-message').textContent = 'Your balance grew. Use it wisely in the next round.';
+  document.querySelector('#income-message').textContent = spectating
+    ? 'The contestants are between rounds. The next auction will begin shortly.'
+    : 'Your balance grew. Use it wisely in the next round.';
+  document.querySelector('#intermission-status').textContent = spectating
+    ? 'Live show · spectator view'
+    : 'Next round starting soon…';
 }
 
 function renderResults(room) {
   showScreen(resultScreen);
+  document.querySelector('#spectator-home-results').hidden = !spectating;
+  document.querySelector('#new-room').hidden = spectating;
   const winners = room.winners ?? [];
   document.querySelector('#result-title').textContent = room.phase === 'ended' ? 'Show paused' : 'Show complete';
   document.querySelector('#result-message').textContent = room.statusMessage
@@ -512,6 +634,24 @@ document.querySelector('#join-room').addEventListener('click', () => {
   send({ type: 'join', name, code });
 });
 
+roomDirectoryList.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-room-action]');
+  if (!button || !roomDirectoryList.contains(button)) return;
+  if (connection?.readyState !== WebSocket.OPEN) {
+    renderDirectory();
+    return;
+  }
+
+  const { roomAction, roomCode } = button.dataset;
+  if (roomAction === 'join') {
+    const name = displayName();
+    if (!name) return;
+    send({ type: 'join', name, code: roomCode });
+  } else if (roomAction === 'watch') {
+    send({ type: 'watch', code: roomCode });
+  }
+});
+
 codeInput.addEventListener('input', () => {
   codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 });
@@ -527,6 +667,18 @@ document.querySelector('#copy-room-code').addEventListener('click', async () => 
 });
 
 startButton.addEventListener('click', () => send({ type: 'start' }));
+for (const button of document.querySelectorAll('.room-exit')) {
+  button.addEventListener('click', () => {
+    if (spectating) {
+      send({ type: 'unwatch' });
+      return;
+    }
+
+    sessionStorage.removeItem(resumeKey);
+    leavingRoom = true;
+    if (!send({ type: 'leave' })) leavingRoom = false;
+  });
+}
 document.querySelector('#pass-bid').addEventListener('click', () => send({ type: 'pass' }));
 document.querySelector('#pass-offer').addEventListener('click', () => send({ type: 'passOffer' }));
 document.querySelector('#price-decrease').addEventListener('click', () => {
@@ -540,14 +692,6 @@ document.querySelector('#price-increase').addEventListener('click', () => {
 document.querySelector('#list-surplus-letter').addEventListener('click', () => {
   if (!selectedSurplusLetter) return;
   send({ type: 'offer', letter: selectedSurplusLetter, startingPrice: selectedStartingPrice });
-});
-
-document.querySelector('#new-room').addEventListener('click', () => {
-  sessionStorage.removeItem(resumeKey);
-  roomState = null;
-  showScreen(homeScreen);
-  if (connection?.readyState === WebSocket.OPEN) connection.close();
-  status.textContent = 'Returning to the studio desk…';
 });
 
 setInterval(() => {
